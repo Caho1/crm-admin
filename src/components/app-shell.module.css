@@ -1,0 +1,163 @@
+.root {
+  min-height: 100vh;
+}
+
+.sider {
+  position: fixed !important;
+  inset: 0 auto 0 0;
+  z-index: 20;
+  height: 100vh;
+  border-right: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  height: 64px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+  gap: 10px;
+}
+
+.brandMark {
+  display: grid;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: #fff;
+  background: #1769aa;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.brandText {
+  min-width: 0;
+}
+
+.brandTitle {
+  overflow: hidden;
+  color: #172033;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brandSub {
+  color: #8a94a6;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.menu {
+  padding-top: 12px;
+  border-inline-end: 0 !important;
+}
+
+.body {
+  min-height: 100vh;
+  margin-left: 216px;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  padding: 0 24px !important;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.headerLeft {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.pageName {
+  overflow: hidden;
+  color: #172033;
+  font-size: 17px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobileMenuButton {
+  display: none !important;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.userButton {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  cursor: pointer;
+  gap: 9px;
+}
+
+.userMeta {
+  display: flex;
+  flex-direction: column;
+  line-height: 18px;
+}
+
+.userName {
+  color: #25324b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.userRole {
+  color: #8a94a6;
+  font-size: 11px;
+}
+
+.content {
+  min-height: calc(100vh - 64px);
+  padding: 22px 24px 32px;
+}
+
+.drawerBrand {
+  margin: 0 0 8px;
+}
+
+@media (max-width: 900px) {
+  .sider {
+    display: none;
+  }
+
+  .body {
+    margin-left: 0;
+  }
+
+  .mobileMenuButton {
+    display: inline-flex !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .header {
+    padding: 0 14px !important;
+  }
+
+  .content {
+    padding: 16px 12px 24px;
+  }
+
+  .userMeta {
+    display: none;
+  }
+}

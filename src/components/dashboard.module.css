@@ -1,0 +1,151 @@
+.pageHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  gap: 16px;
+}
+
+.title {
+  margin: 0;
+  color: #172033;
+  font-size: 22px;
+  line-height: 1.4;
+  font-weight: 680;
+}
+
+.date {
+  color: #7b8798;
+  font-size: 13px;
+}
+
+.stats {
+  display: grid;
+  margin-bottom: 20px;
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.statCard {
+  min-height: 112px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.statTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.statLabel {
+  color: #667085;
+  font-size: 13px;
+}
+
+.statIcon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 6px;
+}
+
+.statValue {
+  color: #172033;
+  font-size: 27px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.quickActions {
+  display: flex;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 54px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.panelBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 0;
+}
+
+/* 两个面板行数不同时高度被拉齐：让表格纵向撑满面板，
+   横向滚动条统一贴在面板底部，而不是悬在最后一行下面 */
+.panelBody :global(.ant-table-wrapper),
+.panelBody :global(.ant-table-wrapper > .ant-spin),
+.panelBody :global(.ant-spin-nested-loading),
+.panelBody :global(.ant-spin-container),
+.panelBody :global(.ant-table),
+.panelBody :global(.ant-table-container) {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.panelBody :global(.ant-table-content) {
+  flex: 1;
+}
+
+@media (max-width: 1280px) {
+  .stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 860px) {
+  .panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .statCard {
+    min-height: 100px;
+  }
+
+  .pageHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

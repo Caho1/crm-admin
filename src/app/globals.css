@@ -1,0 +1,80 @@
+:root {
+  --page-bg: #f4f6f9;
+  --surface: #ffffff;
+  --text-primary: #172033;
+  --text-secondary: #667085;
+  --border: #e3e8ef;
+  --primary: #1769aa;
+  --primary-soft: #eaf3fb;
+  --success: #2f855a;
+  --warning: #b7791f;
+  --danger: #c2413b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+body {
+  color: var(--text-primary);
+  background: var(--page-bg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans KR", Arial, sans-serif;
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.ant-table-wrapper .ant-table-thead > tr > th {
+  color: #475467;
+  font-weight: 600;
+  background: #f8fafc;
+}
+
+.ant-table-wrapper .ant-table-cell {
+  vertical-align: middle;
+}
+
+.ant-modal-root .ant-modal {
+  max-width: calc(100vw - 24px) !important;
+}
+
+.ant-modal .ant-modal-content,
+.ant-drawer .ant-drawer-content {
+  border-radius: 8px;
+}
+
+.ant-card {
+  border-radius: 8px;
+}
+
+@media (max-width: 720px) {
+  .ant-modal {
+    max-width: calc(100vw - 24px);
+  }
+
+  .ant-table-wrapper .ant-table {
+    font-size: 13px;
+  }
+}

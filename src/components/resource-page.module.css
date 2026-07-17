@@ -1,0 +1,175 @@
+.page {
+  min-width: 0;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  gap: 16px;
+}
+
+.titleGroup {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.title {
+  margin: 0;
+  color: #172033;
+  font-size: 22px;
+  line-height: 1.4;
+  font-weight: 680;
+}
+
+.total {
+  color: #8a94a6;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.search {
+  width: min(330px, 100%);
+  max-width: 100%;
+  flex: 0 0 330px;
+}
+
+.filter {
+  min-width: 150px;
+}
+
+.tableFrame {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.primaryCell {
+  color: #1769aa;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primaryCellStatic {
+  color: #1769aa;
+  font-weight: 600;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.muted {
+  color: #98a2b3;
+}
+
+.product {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.productClass {
+  display: inline-flex;
+  min-width: 30px;
+  justify-content: center;
+  padding: 1px 5px;
+  color: #175f91;
+  border: 1px solid #b8d3e7;
+  border-radius: 4px;
+  background: #edf6fc;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rowActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+}
+
+.fieldFull {
+  grid-column: 1 / -1;
+}
+
+.drawerTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detailSectionTitle {
+  margin: 18px 0 10px;
+  color: #344054;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.preWrap {
+  color: #475467;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 720px) {
+  .pageHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .search,
+  .filter {
+    width: 100%;
+    flex-basis: auto;
+  }
+
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .fieldFull {
+    grid-column: auto;
+  }
+}

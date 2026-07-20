@@ -1,7 +1,7 @@
 "use client";
 
 import { EditOutlined, KeyOutlined, PlusOutlined, ReloadOutlined, SwapOutlined } from "@ant-design/icons";
-import { App, Button, Form, Input, Modal, Select, Switch, Table, Tooltip, type TableProps } from "antd";
+import { Alert, App, Button, Form, Input, Modal, Select, Switch, Table, Tooltip, type TableProps } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale } from "./providers";
 import { StatusTag } from "./status-tag";
@@ -30,7 +30,7 @@ type UserOption = {
 export function UserAdmin() {
   const currentUser = useCurrentUser();
   const { t } = useLocale();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [form] = Form.useForm();
   const [passwordForm] = Form.useForm();
   const [handoverForm] = Form.useForm();
@@ -189,7 +189,28 @@ export function UserAdmin() {
     { title: t("角色"), dataIndex: "role", width: 100, render: (value) => <StatusTag value={value} /> },
     { title: t("业务数据"), key: "counts", width: 220, render: (_, row) => <span className={styles.counts}>{t("客户")} {row.customerCount} · {t("商机")} {row.opportunityCount} · {t("订单")} {row.orderCount}</span> },
     { title: t("创建时间"), dataIndex: "createdAt", width: 165 },
-    { title: t("启用"), dataIndex: "status", width: 80, render: (value, row) => <Switch size="small" checked={value === "active"} disabled={row.id === currentUser.id} onChange={(checked) => void toggleStatus(row, checked)} /> },
+    {
+      title: t("启用"), dataIndex: "status", width: 80,
+      render: (value, row) => (
+        <Switch
+          size="small"
+          checked={value === "active"}
+          disabled={row.id === currentUser.id}
+          onChange={(checked) => {
+            // 启用是无害操作直接生效；停用会强制下线，需二次确认（受控组件，取消则状态不变）
+            if (checked) { void toggleStatus(row, true); return; }
+            modal.confirm({
+              title: t("确认停用账号"),
+              content: t("停用后 {name} 将立即无法登录，其名下数据保留，可随时重新启用。", { name: row.name }),
+              okText: t("确认停用"),
+              okButtonProps: { danger: true },
+              cancelText: t("取消"),
+              onOk: () => toggleStatus(row, false),
+            });
+          }}
+        />
+      ),
+    },
     {
       title: t("操作"),
       key: "actions",
@@ -247,7 +268,8 @@ export function UserAdmin() {
           <Form.Item name="password" label={t("新密码")} rules={[{ required: true, min: 8, message: t("密码至少 8 个字符") }]}><Input.Password autoComplete="new-password" /></Form.Item>
         </Form>
       </Modal>
-      <Modal centered title={t("离职数据交接")} open={handoverOpen} okText={t("确认交接")} cancelText={t("取消")} confirmLoading={saving} onOk={() => void handover()} onCancel={() => setHandoverOpen(false)} destroyOnHidden>
+      <Modal centered title={t("离职数据交接")} open={handoverOpen} okText={t("确认交接")} okButtonProps={{ danger: true }} cancelText={t("取消")} confirmLoading={saving} onOk={() => void handover()} onCancel={() => setHandoverOpen(false)} destroyOnHidden>
+        <Alert type="warning" showIcon style={{ marginBottom: 16 }} message={t("交接后，交出人名下的客户、商机、订单将立即转移给接收人，此操作不可撤销。")} />
         <Form form={handoverForm} layout="vertical" preserve={false}>
           <Form.Item name="fromUserId" label={t("交出人")} rules={[{ required: true, message: t("请选择交出人") }]}>
             <Select showSearch optionFilterProp="label" placeholder={t("请选择交出人（含已停用账号）")} options={handoverFromOptions} onChange={() => handoverForm.setFieldValue("toUserId", undefined)} />

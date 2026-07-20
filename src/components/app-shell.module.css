@@ -81,15 +81,6 @@
   gap: 12px;
 }
 
-.pageName {
-  overflow: hidden;
-  color: #172033;
-  font-size: 17px;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .mobileMenuButton {
   display: none !important;
 }

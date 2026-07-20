@@ -39,18 +39,6 @@ function Brand() {
   );
 }
 
-const pageNames: Record<string, string> = {
-  "/dashboard": "工作台",
-  "/customers": "客户管理",
-  "/visits": "拜访报告",
-  "/opportunities": "项目机会",
-  "/products": "产品型号 / 牌号",
-  "/orders": "订单 / 出货 / 到港",
-  "/data-center": "导入导出",
-  "/users": "用户权限",
-  "/audit-logs": "审计日志",
-};
-
 export function AppShell({ user, children }: { user: SessionUser; children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -127,7 +115,6 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
                 aria-label={t("打开导航")}
                 onClick={() => setMobileOpen(true)}
               />
-              <div className={styles.pageName}>{t(pageNames[pathname] || "销售业务管理系统")}</div>
             </div>
             <div className={styles.headerRight}>
               <Dropdown

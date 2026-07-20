@@ -124,15 +124,15 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       filterPlaceholder: t("客户状态"),
       filterOptions: customerStatuses,
       columns: [
-        { title: t("客户名称"), dataIndex: "name", width: 230, kind: "primary", ellipsis: true },
-        { title: t("国家 / 地区"), key: "location", width: 150 },
-        { title: t("行业"), dataIndex: "industry", width: 130, ellipsis: true },
+        { title: t("客户名称"), dataIndex: "name", width: 210, kind: "primary", ellipsis: true },
+        { title: t("国家 / 地区"), key: "location", width: 130 },
+        { title: t("行业"), dataIndex: "industry", width: 110, ellipsis: true },
         { title: t("负责人"), dataIndex: "ownerName", width: 100 },
-        { title: t("协作人"), dataIndex: "memberNames", width: 130, ellipsis: true },
-        { title: t("最近拜访"), dataIndex: "latestVisitDate", width: 120, kind: "date" },
+        { title: t("协作人"), dataIndex: "memberNames", width: 110, ellipsis: true },
+        { title: t("最近拜访"), dataIndex: "latestVisitDate", width: 110, kind: "date" },
         { title: t("商机"), dataIndex: "opportunityCount", width: 70, kind: "number" },
         { title: t("订单"), dataIndex: "orderCount", width: 70, kind: "number" },
-        { title: t("状态"), dataIndex: "status", width: 95, kind: "status" },
+        { title: t("状态"), dataIndex: "status", width: 100, kind: "status" },
       ],
       fields: [
         { name: "name", label: t("客户名称"), type: "input", required: true, full: true },
@@ -163,11 +163,11 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       customerFilter: true,
       columns: [
         { title: t("拜访日期"), dataIndex: "visitDate", width: 120, kind: "date" },
-        { title: t("报告编号"), dataIndex: "reportNo", width: 155 },
-        { title: t("标题"), dataIndex: "title", width: 260, kind: "primary", ellipsis: true },
-        { title: t("客户"), dataIndex: "customerName", width: 190, ellipsis: true },
-        { title: t("关联产品"), dataIndex: "productLabels", width: 170, ellipsis: true },
-        { title: t("创建人"), dataIndex: "creatorName", width: 100 },
+        { title: t("报告编号"), dataIndex: "reportNo", width: 150 },
+        { title: t("标题"), dataIndex: "title", width: 230, kind: "primary", ellipsis: true },
+        { title: t("客户"), dataIndex: "customerName", width: 165, ellipsis: true },
+        { title: t("关联产品"), dataIndex: "productLabels", width: 150, ellipsis: true },
+        { title: t("创建人"), dataIndex: "creatorName", width: 90 },
         { title: t("状态"), dataIndex: "status", width: 90, kind: "status" },
       ],
       fields: [
@@ -197,14 +197,14 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       customerFilter: true,
       productFilter: true,
       columns: [
-        { title: t("商机名称"), dataIndex: "name", width: 230, kind: "primary", ellipsis: true },
-        { title: t("客户"), dataIndex: "customerName", width: 190, ellipsis: true },
-        { title: t("产品"), key: "product", width: 150, kind: "product" },
+        { title: t("商机名称"), dataIndex: "name", width: 200, kind: "primary", ellipsis: true },
+        { title: t("客户"), dataIndex: "customerName", width: 150, ellipsis: true },
+        { title: t("产品"), key: "product", width: 130, kind: "product" },
         { title: t("阶段"), dataIndex: "stage", width: 90, kind: "status" },
-        { title: t("预计金额"), dataIndex: "estimatedAmount", width: 125, kind: "money", currencyField: "currency" },
-        { title: t("负责人"), dataIndex: "ownerName", width: 100 },
-        { title: t("下一步"), dataIndex: "nextAction", width: 220, ellipsis: true },
-        { title: t("下次跟进"), dataIndex: "nextFollowUpDate", width: 120, kind: "date" },
+        { title: t("预计金额"), dataIndex: "estimatedAmount", width: 130, kind: "money", currencyField: "currency" },
+        { title: t("负责人"), dataIndex: "ownerName", width: 90 },
+        { title: t("下一步"), dataIndex: "nextAction", width: 160, ellipsis: true },
+        { title: t("下次跟进"), dataIndex: "nextFollowUpDate", width: 110, kind: "date" },
       ],
       fields: [
         { name: "name", label: t("商机名称"), type: "input", required: true, full: true },
@@ -233,11 +233,11 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       filterOptions: [{ label: t("启用"), value: "active" }, { label: t("停用"), value: "inactive" }],
       adminWriteOnly: true,
       columns: [
-        { title: t("产品大类"), dataIndex: "className", width: 120 },
-        { title: t("型号 / 牌号（Grade）"), dataIndex: "grade", width: 190, kind: "primary" },
-        { title: t("品牌"), dataIndex: "brand", width: 150, ellipsis: true },
-        { title: t("供应商"), dataIndex: "supplier", width: 160, ellipsis: true },
-        { title: t("用途"), dataIndex: "application", width: 230, ellipsis: true },
+        { title: t("产品大类"), dataIndex: "className", width: 100 },
+        { title: t("型号 / 牌号（Grade）"), dataIndex: "grade", width: 180, kind: "primary" },
+        { title: t("品牌"), dataIndex: "brand", width: 130, ellipsis: true },
+        { title: t("供应商"), dataIndex: "supplier", width: 140, ellipsis: true },
+        { title: t("用途"), dataIndex: "application", width: 200, ellipsis: true },
         { title: t("商机"), dataIndex: "opportunityCount", width: 70, kind: "number" },
         { title: t("订单"), dataIndex: "orderCount", width: 70, kind: "number" },
         { title: t("状态"), dataIndex: "status", width: 85, kind: "status" },
@@ -266,17 +266,17 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       productFilter: true,
       shipmentMonthFilter: true,
       columns: [
-        { title: t("订单编号"), dataIndex: "orderNo", width: 155, kind: "primary" },
-        { title: t("下单日期"), dataIndex: "orderDate", width: 120, kind: "date" },
-        { title: t("客户"), dataIndex: "customerName", width: 180, ellipsis: true },
-        { title: t("产品"), key: "product", width: 145, kind: "product" },
-        { title: t("数量"), dataIndex: "quantity", width: 90, kind: "number" },
-        { title: t("单价"), dataIndex: "price", width: 115, kind: "money", currencyField: "currency" },
-        { title: t("实际出货"), dataIndex: "actualShipmentDate", width: 120, kind: "date" },
-        { title: t("预计到港"), dataIndex: "expectedArrivalDate", width: 120, kind: "date" },
-        { title: t("合同号"), dataIndex: "contractNo", width: 125 },
-        { title: t("发票号"), dataIndex: "invoiceNo", width: 125 },
+        { title: t("订单编号"), dataIndex: "orderNo", width: 160, kind: "primary" },
+        { title: t("下单日期"), dataIndex: "orderDate", width: 110, kind: "date" },
+        { title: t("客户"), dataIndex: "customerName", width: 150, ellipsis: true },
+        { title: t("产品"), key: "product", width: 130, kind: "product" },
+        { title: t("数量"), dataIndex: "quantity", width: 80, kind: "number" },
+        { title: t("单价"), dataIndex: "price", width: 120, kind: "money", currencyField: "currency" },
         { title: t("状态"), dataIndex: "status", width: 90, kind: "status" },
+        { title: t("实际出货"), dataIndex: "actualShipmentDate", width: 110, kind: "date" },
+        { title: t("预计到港"), dataIndex: "expectedArrivalDate", width: 110, kind: "date" },
+        { title: t("合同号"), dataIndex: "contractNo", width: 110 },
+        { title: t("发票号"), dataIndex: "invoiceNo", width: 110 },
       ],
       fields: [
         { name: "orderNo", label: t("订单编号"), type: "input", placeholder: t("留空自动生成") },
@@ -532,12 +532,16 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
   };
 
   const tableColumns: TableProps<RowData>["columns"] = (() => {
-    const columns: TableProps<RowData>["columns"] = config.columns.map((column) => ({
+    const columns: TableProps<RowData>["columns"] = config.columns.map((column, index) => ({
       title: column.title,
       dataIndex: column.dataIndex,
       key: column.key || column.dataIndex,
       width: column.width,
       ellipsis: column.ellipsis,
+      // 金额/数量类列右对齐，便于纵向扫读对比
+      align: column.kind === "money" || column.kind === "number" ? ("right" as const) : undefined,
+      // 首列为主键列时固定在左侧，横向滚动时不丢失行上下文
+      fixed: index === 0 && column.kind === "primary" ? ("left" as const) : undefined,
       render: (value: unknown, record: RowData) => {
         if (column.key === "location") {
           const location = [record.country, record.region].filter(Boolean).join(" / ");

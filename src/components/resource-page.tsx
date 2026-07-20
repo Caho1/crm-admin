@@ -318,7 +318,7 @@ function formatNumber(value: unknown) {
   return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(Number(value));
 }
 
-export function ResourcePage({ resource }: { resource: ResourceKind }) {
+export function ResourcePage({ resource, initialFilter }: { resource: ResourceKind; initialFilter?: string }) {
   const { t } = useLocale();
   const configs = useMemo(() => buildConfigs(t), [t]);
   const config = configs[resource];
@@ -334,7 +334,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
   const [total, setTotal] = useState(0);
   const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<string | undefined>();
+  const [filter, setFilter] = useState<string | undefined>(initialFilter);
   const [customerId, setCustomerId] = useState<number | undefined>();
   const [productId, setProductId] = useState<number | undefined>();
   const [shipmentMonth, setShipmentMonth] = useState<string | undefined>();

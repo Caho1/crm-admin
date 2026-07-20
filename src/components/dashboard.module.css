@@ -149,3 +149,134 @@
     flex-direction: column;
   }
 }
+
+/* 统计卡下钻链接 */
+.statLink {
+  display: block;
+  height: 100%;
+  color: inherit;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.statLink:hover {
+  box-shadow: 0 6px 16px rgba(23, 105, 170, 0.12);
+  transform: translateY(-2px);
+}
+
+.statLink:focus-visible {
+  outline: 2px solid #1769aa;
+  outline-offset: 2px;
+}
+
+.statLink .statCard {
+  height: 100%;
+}
+
+/* 图表区：左阶段分布窄、右订单趋势宽 */
+.charts {
+  display: grid;
+  margin-bottom: 16px;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 16px;
+}
+
+.chartEmpty {
+  padding: 36px 16px;
+  color: #98a2b3;
+  font-size: 13px;
+  text-align: center;
+}
+
+.stageBars {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 16px 14px;
+  gap: 11px;
+}
+
+.stageRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stageLabel {
+  flex: 0 0 52px;
+  color: #475467;
+  font-size: 13px;
+}
+
+.stageTrack {
+  overflow: hidden;
+  height: 20px;
+  flex: 1;
+  border-radius: 5px;
+  background: #f2f5f9;
+}
+
+.stageFill {
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #3d8bc7, #1769aa);
+  transition: width 0.5s ease;
+}
+
+.stageCount {
+  flex: 0 0 28px;
+  color: #172033;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+}
+
+.trendSvg {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  padding: 4px 8px 2px;
+}
+
+.trendGrid {
+  stroke: #eef1f5;
+  stroke-width: 1;
+}
+
+.trendTick {
+  fill: #98a2b3;
+  font-size: 11px;
+}
+
+.trendArea {
+  fill: rgba(23, 105, 170, 0.1);
+}
+
+.trendLine {
+  fill: none;
+  stroke: #1769aa;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.trendDot {
+  fill: #fff;
+  stroke: #1769aa;
+  stroke-width: 2;
+}
+
+.trendValue {
+  fill: #344054;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+@media (max-width: 860px) {
+  .charts {
+    grid-template-columns: 1fr;
+  }
+}

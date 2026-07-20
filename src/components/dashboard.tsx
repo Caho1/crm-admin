@@ -10,9 +10,11 @@ import {
 } from "@ant-design/icons";
 import { App, Button, Card, Empty, Skeleton, Table, type TableProps } from "antd";
 import dayjs from "dayjs";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useLocale } from "./providers";
+import { StageBars, TrendLine } from "./mini-charts";
 import { StatusTag } from "./status-tag";
 import styles from "./dashboard.module.css";
 
@@ -27,6 +29,8 @@ type DashboardData = {
   };
   recentVisits: Array<Record<string, string | number>>;
   shipmentAlerts: Array<Record<string, string | number | null>>;
+  stageDistribution: Array<{ stage: string; count: number }>;
+  monthlyOrders: Array<{ month: string; count: number }>;
 };
 
 export function Dashboard() {
@@ -56,12 +60,12 @@ export function Dashboard() {
 
   const statItems = data
     ? [
-        { label: t("可见客户"), value: data.stats.customers, icon: <TeamOutlined />, color: "#1769aa", bg: "#eaf3fb" },
-        { label: t("本月拜访"), value: data.stats.visitsThisMonth, icon: <CalendarOutlined />, color: "#2f855a", bg: "#eaf7ef" },
-        { label: t("推进中商机"), value: data.stats.opportunities, icon: <FunnelPlotOutlined />, color: "#9a6700", bg: "#fff4d6" },
-        { label: t("本月订单"), value: data.stats.ordersThisMonth, icon: <ExportOutlined />, color: "#7c4d9e", bg: "#f3ecf8" },
-        { label: t("待出货"), value: data.stats.pendingShipment, icon: <TruckOutlined />, color: "#b45309", bg: "#fff0e0" },
-        { label: t("14 天内到港"), value: data.stats.arrivingSoon, icon: <TruckOutlined />, color: "#b73e3e", bg: "#fdecec" },
+        { label: t("可见客户"), value: data.stats.customers, icon: <TeamOutlined />, color: "#1769aa", bg: "#eaf3fb", href: "/customers" },
+        { label: t("本月拜访"), value: data.stats.visitsThisMonth, icon: <CalendarOutlined />, color: "#2f855a", bg: "#eaf7ef", href: "/visits" },
+        { label: t("推进中商机"), value: data.stats.opportunities, icon: <FunnelPlotOutlined />, color: "#9a6700", bg: "#fff4d6", href: "/opportunities" },
+        { label: t("本月订单"), value: data.stats.ordersThisMonth, icon: <ExportOutlined />, color: "#7c4d9e", bg: "#f3ecf8", href: "/orders" },
+        { label: t("待出货"), value: data.stats.pendingShipment, icon: <TruckOutlined />, color: "#b45309", bg: "#fff0e0", href: "/orders?status=confirmed" },
+        { label: t("14 天内到港"), value: data.stats.arrivingSoon, icon: <TruckOutlined />, color: "#b73e3e", bg: "#fdecec", href: "/orders" },
       ]
     : [];
 
@@ -83,6 +87,14 @@ export function Dashboard() {
   // locale 变化时 dayjs 全局语言已由 Providers 切换，这里只需按语言选格式
   void locale;
 
+  const stageLabels: Record<string, string> = {
+    lead: t("意向"),
+    sample: t("样品"),
+    testing: t("测试"),
+    quotation: t("报价"),
+    paused: t("暂停"),
+  };
+
   return (
     <div>
       <div className={styles.pageHeader}>
@@ -95,13 +107,15 @@ export function Dashboard() {
         <>
           <div className={styles.stats}>
             {statItems.map((item) => (
-              <Card key={item.label} className={styles.statCard} styles={{ body: { padding: 16 } }}>
-                <div className={styles.statTop}>
-                  <span className={styles.statLabel}>{item.label}</span>
-                  <span className={styles.statIcon} style={{ color: item.color, background: item.bg }}>{item.icon}</span>
-                </div>
-                <div className={styles.statValue}>{item.value}</div>
-              </Card>
+              <Link key={item.label} href={item.href} className={styles.statLink}>
+                <Card className={styles.statCard} styles={{ body: { padding: 16 } }}>
+                  <div className={styles.statTop}>
+                    <span className={styles.statLabel}>{item.label}</span>
+                    <span className={styles.statIcon} style={{ color: item.color, background: item.bg }}>{item.icon}</span>
+                  </div>
+                  <div className={styles.statValue}>{item.value}</div>
+                </Card>
+              </Link>
             ))}
           </div>
           <div className={styles.quickActions}>
@@ -109,6 +123,29 @@ export function Dashboard() {
             <Button icon={<CalendarOutlined />} onClick={() => router.push("/visits?create=1")}>{t("新建拜访")}</Button>
             <Button icon={<FunnelPlotOutlined />} onClick={() => router.push("/opportunities?create=1")}>{t("新建商机")}</Button>
             <Button icon={<TruckOutlined />} onClick={() => router.push("/orders?create=1")}>{t("新建订单")}</Button>
+          </div>
+          <div className={styles.charts}>
+            <section className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <h2 className={styles.panelTitle}>{t("商机阶段分布")}</h2>
+                <Button type="link" onClick={() => router.push("/opportunities")}>{t("查看全部")}</Button>
+              </div>
+              <StageBars
+                data={data.stageDistribution.map((item) => ({ ...item, label: stageLabels[item.stage] || item.stage }))}
+                emptyText={t("暂无推进中商机")}
+              />
+            </section>
+            <section className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <h2 className={styles.panelTitle}>{t("近 6 个月订单趋势")}</h2>
+                <Button type="link" onClick={() => router.push("/orders")}>{t("查看全部")}</Button>
+              </div>
+              <TrendLine
+                data={data.monthlyOrders.map((item) => ({ ...item, label: dayjs(`${item.month}-01`).format("MMM") }))}
+                emptyText={t("近 6 个月暂无订单")}
+                unitText={t("单")}
+              />
+            </section>
           </div>
           <div className={styles.panels}>
             <section className={styles.panel}>

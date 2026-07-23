@@ -3,6 +3,7 @@
 import { EditOutlined, KeyOutlined, PlusOutlined, ReloadOutlined, SwapOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Form, Input, Modal, Select, Switch, Table, Tooltip, type TableProps } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiFetch } from "@/lib/client-fetch";
 import { useLocale } from "./providers";
 import { StatusTag } from "./status-tag";
 import { useCurrentUser } from "./user-context";
@@ -61,7 +62,7 @@ export function UserAdmin() {
       if (query) params.set("q", query);
       if (role) params.set("role", role);
       if (status) params.set("status", status);
-      const response = await fetch(`/api/users?${params}`);
+      const response = await apiFetch(`/api/users?${params}`);
       const payload = await response.json();
       if (seq !== loadSeq.current) return;
       if (!response.ok) throw new Error(payload.error?.message || "用户加载失败");
@@ -75,6 +76,18 @@ export function UserAdmin() {
   }, [message, page, pageSize, query, role, status, t]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // 搜索输入 350ms 防抖自动触发
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const next = searchInput.trim();
+      if (next !== query) {
+        setQuery(next);
+        setPage(1);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchInput, query]);
 
   const openCreate = () => {
     setEditing(null);
@@ -91,7 +104,7 @@ export function UserAdmin() {
   const openHandover = async () => {
     setHandoverOpen(true);
     try {
-      const response = await fetch("/api/users/options");
+      const response = await apiFetch("/api/users/options");
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message || "用户列表加载失败");
       setUserOptions(payload.data);
@@ -104,7 +117,7 @@ export function UserAdmin() {
     try {
       const values = await form.validateFields();
       setSaving(true);
-      const response = await fetch(editing ? `/api/users/${editing.id}` : "/api/users", {
+      const response = await apiFetch(editing ? `/api/users/${editing.id}` : "/api/users", {
         method: editing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
@@ -123,7 +136,7 @@ export function UserAdmin() {
 
   const toggleStatus = async (row: UserRow, active: boolean) => {
     try {
-      const response = await fetch(`/api/users/${row.id}`, {
+      const response = await apiFetch(`/api/users/${row.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: row.username, name: row.name, role: row.role, status: active ? "active" : "disabled" }),
@@ -142,7 +155,7 @@ export function UserAdmin() {
     try {
       const values = await passwordForm.validateFields();
       setSaving(true);
-      const response = await fetch(`/api/users/${passwordTarget.id}/reset-password`, {
+      const response = await apiFetch(`/api/users/${passwordTarget.id}/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
@@ -162,7 +175,7 @@ export function UserAdmin() {
     try {
       const values = await handoverForm.validateFields();
       setSaving(true);
-      const response = await fetch("/api/users/handover", {
+      const response = await apiFetch("/api/users/handover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
@@ -244,7 +257,7 @@ export function UserAdmin() {
         </div>
       </div>
       <div className={styles.toolbar}>
-        <Input.Search className={styles.search} allowClear value={searchInput} placeholder={t("姓名或登录账号")} onChange={(event) => { setSearchInput(event.target.value); if (!event.target.value) { setQuery(""); setPage(1); } }} onSearch={(value) => { setQuery(value.trim()); setPage(1); }} />
+        <Input.Search className={styles.search} allowClear value={searchInput} placeholder={t("姓名或登录账号")} onChange={(event) => setSearchInput(event.target.value)} onSearch={(value) => { setQuery(value.trim()); setPage(1); }} />
         <Select className={styles.filter} allowClear placeholder={t("全部角色")} value={role} options={[{ label: t("管理员"), value: "admin" }, { label: t("普通用户"), value: "user" }]} onChange={(value) => { setRole(value); setPage(1); }} />
         <Select className={styles.filter} allowClear placeholder={t("全部状态")} value={status} options={[{ label: t("启用"), value: "active" }, { label: t("停用"), value: "disabled" }]} onChange={(value) => { setStatus(value); setPage(1); }} />
         <Tooltip title={t("刷新")}><Button icon={<ReloadOutlined />} onClick={() => void load()} /></Tooltip>
@@ -269,7 +282,7 @@ export function UserAdmin() {
         </Form>
       </Modal>
       <Modal centered title={t("离职数据交接")} open={handoverOpen} okText={t("确认交接")} okButtonProps={{ danger: true }} cancelText={t("取消")} confirmLoading={saving} onOk={() => void handover()} onCancel={() => setHandoverOpen(false)} destroyOnHidden>
-        <Alert type="warning" showIcon style={{ marginBottom: 16 }} message={t("交接后，交出人名下的客户、商机、订单将立即转移给接收人，此操作不可撤销。")} />
+        <Alert type="warning" showIcon style={{ marginBottom: 16 }} title={t("交接后，交出人名下的客户、商机、订单将立即转移给接收人，此操作不可撤销。")} />
         <Form form={handoverForm} layout="vertical" preserve={false}>
           <Form.Item name="fromUserId" label={t("交出人")} rules={[{ required: true, message: t("请选择交出人") }]}>
             <Select showSearch optionFilterProp="label" placeholder={t("请选择交出人（含已停用账号）")} options={handoverFromOptions} onChange={() => handoverForm.setFieldValue("toUserId", undefined)} />

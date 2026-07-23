@@ -1,5 +1,5 @@
 import { getDb } from "@/db/client";
-import { created, handleApiError, ok, paginationFrom, parseBody, requireApiUser } from "@/lib/api";
+import { ApiError, created, handleApiError, ok, paginationFrom, parseBody, requireApiUser } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
 import { assertCustomerAccess, customerCanEdit, customerScope } from "@/lib/permissions";
 import { addCondition, searchLike, whereSql } from "@/lib/query";
@@ -57,8 +57,13 @@ export async function POST(request: Request) {
     const user = await requireApiUser();
     const input = await parseBody(request, opportunitySchema);
     assertCustomerAccess(user, input.customerId, "edit");
+    const db = getDb();
+    // 外键前置校验：产品不存在时返回 422 字段错误，而不是 SQLite 外键违例的 500
+    if (input.productId && !db.prepare("SELECT id FROM products WHERE id = ?").get(input.productId)) {
+      throw new ApiError(422, "PRODUCT_NOT_FOUND", "产品不存在", { productId: "产品不存在" });
+    }
     const ownerId = user.role === "admin" && input.ownerId ? input.ownerId : user.id;
-    const result = getDb().prepare(`
+    const result = db.prepare(`
       INSERT INTO opportunities
         (name, customer_id, product_id, stage, estimated_quantity, estimated_amount, currency,
          owner_id, next_action, next_follow_up_date, notes, status, created_by)

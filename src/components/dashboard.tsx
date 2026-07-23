@@ -8,13 +8,14 @@ import {
   TeamOutlined,
   TruckOutlined,
 } from "@ant-design/icons";
-import { App, Button, Card, Empty, Skeleton, Table, type TableProps } from "antd";
+import { App, Button, Card, Empty, Segmented, Skeleton, Table, type TableProps } from "antd";
 import dayjs from "dayjs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/client-fetch";
 import { useLocale } from "./providers";
-import { StageBars, TrendLine } from "./mini-charts";
+import { StageColumns, TrendArea } from "./mini-charts";
 import { StatusTag } from "./status-tag";
 import styles from "./dashboard.module.css";
 
@@ -30,8 +31,16 @@ type DashboardData = {
   recentVisits: Array<Record<string, string | number>>;
   shipmentAlerts: Array<Record<string, string | number | null>>;
   stageDistribution: Array<{ stage: string; count: number }>;
-  monthlyOrders: Array<{ month: string; count: number }>;
 };
+
+type TrendGranularity = "year" | "month" | "week";
+
+// 桶 key 转成坐标轴短标签与悬浮提示完整标题
+function formatTrendBucket(bucket: string, granularity: TrendGranularity) {
+  if (granularity === "week") return { label: dayjs(bucket).format("M/D"), title: bucket };
+  if (granularity === "month") return { label: dayjs(`${bucket}-01`).format("MMM"), title: bucket };
+  return { label: bucket, title: bucket };
+}
 
 export function Dashboard() {
   const router = useRouter();
@@ -39,11 +48,13 @@ export function Dashboard() {
   const { message } = App.useApp();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [granularity, setGranularity] = useState<TrendGranularity>("month");
+  const [trend, setTrend] = useState<Array<{ bucket: string; count: number }> | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/dashboard");
+      const response = await apiFetch("/api/dashboard");
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message || "工作台加载失败");
       setData(payload.data);
@@ -58,6 +69,24 @@ export function Dashboard() {
     void load();
   }, [load]);
 
+  // 订单趋势独立加载：切换粒度时只刷新图表，不动其余面板
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await apiFetch(`/api/dashboard/trend?granularity=${granularity}`);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error?.message || "订单趋势加载失败");
+        if (!cancelled) setTrend(payload.data.trend);
+      } catch (error) {
+        if (!cancelled) message.error(t(error instanceof Error ? error.message : "订单趋势加载失败"));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [granularity, message, t]);
+
   const statItems = data
     ? [
         { label: t("可见客户"), value: data.stats.customers, icon: <TeamOutlined />, color: "#1769aa", bg: "#eaf3fb", href: "/customers" },
@@ -65,7 +94,7 @@ export function Dashboard() {
         { label: t("推进中商机"), value: data.stats.opportunities, icon: <FunnelPlotOutlined />, color: "#9a6700", bg: "#fff4d6", href: "/opportunities" },
         { label: t("本月订单"), value: data.stats.ordersThisMonth, icon: <ExportOutlined />, color: "#7c4d9e", bg: "#f3ecf8", href: "/orders" },
         { label: t("待出货"), value: data.stats.pendingShipment, icon: <TruckOutlined />, color: "#b45309", bg: "#fff0e0", href: "/orders?status=confirmed" },
-        { label: t("14 天内到港"), value: data.stats.arrivingSoon, icon: <TruckOutlined />, color: "#b73e3e", bg: "#fdecec", href: "/orders" },
+        { label: t("14 天内到港"), value: data.stats.arrivingSoon, icon: <TruckOutlined />, color: "#b73e3e", bg: "#fdecec", href: "/orders?arriving=soon" },
       ]
     : [];
 
@@ -130,21 +159,38 @@ export function Dashboard() {
                 <h2 className={styles.panelTitle}>{t("商机阶段分布")}</h2>
                 <Button type="link" onClick={() => router.push("/opportunities")}>{t("查看全部")}</Button>
               </div>
-              <StageBars
+              <StageColumns
                 data={data.stageDistribution.map((item) => ({ ...item, label: stageLabels[item.stage] || item.stage }))}
                 emptyText={t("暂无推进中商机")}
+                tooltipName={t("商机数")}
               />
             </section>
             <section className={styles.panel}>
               <div className={styles.panelHeader}>
-                <h2 className={styles.panelTitle}>{t("近 6 个月订单趋势")}</h2>
-                <Button type="link" onClick={() => router.push("/orders")}>{t("查看全部")}</Button>
+                <h2 className={styles.panelTitle}>{t("订单趋势")}</h2>
+                <div className={styles.panelHeaderRight}>
+                  <Segmented
+                    size="small"
+                    value={granularity}
+                    onChange={(value) => setGranularity(value as TrendGranularity)}
+                    options={[
+                      { label: t("年度"), value: "year" },
+                      { label: t("月"), value: "month" },
+                      { label: t("周"), value: "week" },
+                    ]}
+                  />
+                  <Button type="link" onClick={() => router.push("/orders")}>{t("查看全部")}</Button>
+                </div>
               </div>
-              <TrendLine
-                data={data.monthlyOrders.map((item) => ({ ...item, label: dayjs(`${item.month}-01`).format("MMM") }))}
-                emptyText={t("近 6 个月暂无订单")}
-                unitText={t("单")}
-              />
+              {trend ? (
+                <TrendArea
+                  data={trend.map((item) => ({ ...item, ...formatTrendBucket(item.bucket, granularity) }))}
+                  emptyText={t("暂无订单数据")}
+                  tooltipName={t("订单数")}
+                />
+              ) : (
+                <div className={styles.chartLoading} />
+              )}
             </section>
           </div>
           <div className={styles.panels}>

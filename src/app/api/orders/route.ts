@@ -1,37 +1,17 @@
 import { getDb } from "@/db/client";
 import { ApiError, created, handleApiError, ok, paginationFrom, parseBody, requireApiUser } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
-import { assertCustomerAccess, customerCanEdit, customerScope } from "@/lib/permissions";
-import { addCondition, generatedCode, searchLike, whereSql } from "@/lib/query";
+import { buildOrderFilters } from "@/lib/order-filters";
+import { assertCustomerAccess, customerCanEdit } from "@/lib/permissions";
+import { uniqueCode, whereSql } from "@/lib/query";
 import { orderSchema } from "@/lib/validation";
-
-function orderFilters(searchParams: URLSearchParams, user: Awaited<ReturnType<typeof requireApiUser>>) {
-  const conditions = ["ord.deleted_at IS NULL", "c.deleted_at IS NULL"];
-  const params: unknown[] = [];
-  const scope = customerScope(user, "c");
-  addCondition(conditions, params, scope.sql, ...scope.params);
-  if (searchParams.get("q")) {
-    const value = searchLike(searchParams.get("q"));
-    addCondition(conditions, params, `(
-      ord.order_no LIKE ? OR c.name LIKE ? OR p.grade LIKE ? OR p.class_name LIKE ?
-      OR ord.contract_no LIKE ? OR ord.invoice_no LIKE ? OR ord.destination LIKE ?
-    )`, value, value, value, value, value, value, value);
-  }
-  if (searchParams.get("status")) addCondition(conditions, params, "ord.status = ?", searchParams.get("status"));
-  if (searchParams.get("customerId")) addCondition(conditions, params, "ord.customer_id = ?", Number(searchParams.get("customerId")));
-  if (searchParams.get("productId")) addCondition(conditions, params, "ord.product_id = ?", Number(searchParams.get("productId")));
-  if (searchParams.get("shipmentMonth")) addCondition(conditions, params, "ord.shipment_month = ?", searchParams.get("shipmentMonth"));
-  if (searchParams.get("dateFrom")) addCondition(conditions, params, "ord.order_date >= ?", searchParams.get("dateFrom"));
-  if (searchParams.get("dateTo")) addCondition(conditions, params, "ord.order_date <= ?", searchParams.get("dateTo"));
-  return { conditions, params };
-}
 
 export async function GET(request: Request) {
   try {
     const user = await requireApiUser();
     const { searchParams } = new URL(request.url);
     const { page, pageSize, offset } = paginationFrom(searchParams);
-    const { conditions, params } = orderFilters(searchParams, user);
+    const { conditions, params } = buildOrderFilters(searchParams, user);
     const where = whereSql(conditions);
     const db = getDb();
     const edit = customerCanEdit(user, "c");
@@ -41,7 +21,7 @@ export async function GET(request: Request) {
       SELECT ord.id, ord.order_no AS orderNo, ord.order_date AS orderDate,
         ord.customer_id AS customerId, c.name AS customerName,
         ord.product_id AS productId, p.class_name AS className, p.grade,
-        ord.quantity, ord.price, ord.currency, ord.destination,
+        ord.quantity, ord.price, ord.quantity * ord.price AS amount, ord.currency, ord.destination,
         ord.trade_terms AS tradeTerms, ord.payment_method AS paymentMethod,
         ord.shipment_month AS shipmentMonth, ord.lc_tt_date AS lcTtDate,
         ord.actual_shipment_date AS actualShipmentDate,
@@ -66,8 +46,17 @@ export async function POST(request: Request) {
     const input = await parseBody(request, orderSchema);
     assertCustomerAccess(user, input.customerId, "edit");
     const db = getDb();
-    const orderNo = input.orderNo || generatedCode("SO");
-    if (db.prepare("SELECT id FROM orders WHERE order_no = ?").get(orderNo)) throw new ApiError(409, "DUPLICATE_ORDER_NO", "订单编号已存在");
+    // 外键前置校验：产品不存在时返回 422 字段错误，而不是 SQLite 外键违例的 500
+    if (!db.prepare("SELECT id FROM products WHERE id = ?").get(input.productId)) {
+      throw new ApiError(422, "PRODUCT_NOT_FOUND", "产品不存在", { productId: "产品不存在" });
+    }
+    const orderNo = input.orderNo || uniqueCode("SO", (code) =>
+      Boolean(db.prepare("SELECT id FROM orders WHERE order_no = ?").get(code)),
+    );
+    // 业务编号查重不区分大小写；已软删的记录在删除时已释放编号，不参与查重
+    if (db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND deleted_at IS NULL").get(orderNo)) {
+      throw new ApiError(409, "DUPLICATE_ORDER_NO", "订单编号已存在");
+    }
     const ownerId = user.role === "admin" && input.ownerId ? input.ownerId : user.id;
     const result = db.prepare(`
       INSERT INTO orders

@@ -56,12 +56,89 @@
   min-width: 150px;
 }
 
+.dateRange {
+  min-width: 250px;
+}
+
+.arrivingChip {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-end: 0;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.arrivingChip:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.arrivingChip:global(.ant-tag-checkable-checked) {
+  color: #fff;
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
 .tableFrame {
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: #fff;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+/* ---- 表格观感优化：表头、行高、悬浮、斑马纹、单元格边框 ---- */
+.tableFrame :global(.ant-table) {
+  font-size: 13.5px;
+}
+
+/* 表头：浅灰底 + 更沉的字色，和内容区拉开层次；去掉列间那根竖分隔线 */
+.tableFrame :global(.ant-table-thead > tr > th) {
+  background: #f7f9fc;
+  color: #475467;
+  font-weight: 650;
+  border-bottom: 1px solid #e7ecf3;
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.tableFrame :global(.ant-table-thead > tr > th::before) {
+  display: none !important;
+}
+
+/* 行：更从容的行高 + 更淡的分隔线 */
+.tableFrame :global(.ant-table-tbody > tr > td) {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f3f7;
+}
+
+/* 斑马纹：偶数行极浅底，长表纵向扫读不串行 */
+.tableFrame :global(.ant-table-tbody > tr:nth-child(even) > td) {
+  background: #fcfdfe;
+}
+
+/* 悬浮整行高亮，压过斑马纹 */
+.tableFrame :global(.ant-table-tbody > tr:hover > td) {
+  background: #eef4fb !important;
+}
+
+/* 最后一行去掉底边线，贴合圆角边框 */
+.tableFrame :global(.ant-table-tbody > tr:last-child > td) {
+  border-bottom: none;
+}
+
+/* 分页条居中到表格正下方（antd 默认右对齐，特异性需压过组件样式） */
+.tableFrame :global(.ant-table-wrapper .ant-pagination) {
+  justify-content: center;
+  margin-top: 16px;
+  margin-bottom: 4px;
 }
 
 .primaryCell {
@@ -160,7 +237,8 @@
   }
 
   .search,
-  .filter {
+  .filter,
+  .dateRange {
     width: 100%;
     flex-basis: auto;
   }

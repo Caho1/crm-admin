@@ -1,10 +1,10 @@
 "use client";
 
-import { DownloadOutlined, FileExcelOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
+import { FileExcelOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Empty, Table, Tag, Upload, type TableProps, type UploadFile } from "antd";
 import { useState } from "react";
+import { apiFetch } from "@/lib/client-fetch";
 import { useLocale } from "./providers";
-import { useCurrentUser } from "./user-context";
 import styles from "./data-center.module.css";
 
 type PreviewRow = {
@@ -28,7 +28,6 @@ type ImportResult = {
 };
 
 export function DataCenter() {
-  const user = useCurrentUser();
   const { t } = useLocale();
   const { message } = App.useApp();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
@@ -48,7 +47,7 @@ export function DataCenter() {
       const form = new FormData();
       form.append("file", file);
       form.append("commit", String(commit));
-      const response = await fetch("/api/data/orders-import", { method: "POST", body: form });
+      const response = await apiFetch("/api/data/orders-import", { method: "POST", body: form });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message || "Excel 处理失败");
       setResult(payload.data);
@@ -82,51 +81,50 @@ export function DataCenter() {
   return (
     <div>
       <div className={styles.header}>
-        <h1 className={styles.title}>{t("导入导出")}</h1>
+        <h2 className={styles.sectionTitle}>{t("订单 Excel 导入")}</h2>
         <div className={styles.headerActions}>
           <Button icon={<FileExcelOutlined />} href="/api/data/orders-template">{t("下载订单模板")}</Button>
-          <Button type="primary" icon={<DownloadOutlined />} href="/api/data/orders-export">{t("导出可见订单")}</Button>
         </div>
       </div>
-      {user.role === "admin" ? (
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>{t("订单 Excel 导入")}</h2>
-            <Tag color="blue">{t("仅管理员")}</Tag>
+      <section className={styles.section}>
+        <div className={styles.sectionBody}>
+          <Upload.Dragger
+            className={styles.upload}
+            accept=".xlsx"
+            maxCount={1}
+            fileList={fileList}
+            beforeUpload={() => false}
+            onChange={({ fileList: next }) => { setFileList(next.slice(-1)); setResult(null); }}
+            onRemove={() => { setFileList([]); setResult(null); }}
+          >
+            <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+            <p className="ant-upload-text">{t("选择或拖入订单 Excel")}</p>
+            <p className="ant-upload-hint">{t("支持 .xlsx，单个文件不超过 5MB")}</p>
+          </Upload.Dragger>
+          <div className={styles.actions}>
+            <Button icon={<UploadOutlined />} loading={checking} disabled={!fileList.length} onClick={() => void upload(false)}>{t("开始预检")}</Button>
+            <Button type="primary" loading={importing} disabled={!result?.valid || !fileList.length} onClick={() => void upload(true)}>{t("确认导入")}</Button>
           </div>
-          <div className={styles.sectionBody}>
-            <Upload.Dragger
-              className={styles.upload}
-              accept=".xlsx"
-              maxCount={1}
-              fileList={fileList}
-              beforeUpload={() => false}
-              onChange={({ fileList: next }) => { setFileList(next.slice(-1)); setResult(null); }}
-              onRemove={() => { setFileList([]); setResult(null); }}
-            >
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">{t("选择或拖入订单 Excel")}</p>
-              <p className="ant-upload-hint">{t("支持 .xlsx，单个文件不超过 5MB")}</p>
-            </Upload.Dragger>
-            <div className={styles.actions}>
-              <Button icon={<UploadOutlined />} loading={checking} disabled={!fileList.length} onClick={() => void upload(false)}>{t("开始预检")}</Button>
-              <Button type="primary" loading={importing} disabled={!result?.valid || !fileList.length} onClick={() => void upload(true)}>{t("确认导入")}</Button>
-            </div>
-          </div>
-        </section>
-      ) : (
-        <Alert showIcon type="info" message={t("普通用户可导出权限范围内的订单；订单导入由管理员执行。")} style={{ marginBottom: 16 }} />
-      )}
+        </div>
+      </section>
       {result ? (
         <section className={styles.section}>
-          <div className={styles.sectionHeader}><h2 className={styles.sectionTitle}>{t("预检结果")}</h2></div>
+          <div className={styles.sectionHeader}><h2 className={styles.sectionTitle}>{result.imported !== undefined ? t("导入结果") : t("预检结果")}</h2></div>
           <div className={styles.sectionBody}>
             <div className={styles.resultSummary}>
-              <Tag color={result.valid ? "green" : "red"}>{result.valid ? t("预检通过") : t("存在错误")}</Tag>
+              <Tag color={result.valid ? "green" : "red"}>{result.valid ? (result.imported !== undefined ? t("导入成功") : t("预检通过")) : t("存在错误")}</Tag>
               {result.totalRows !== undefined ? <span>{t("共 {total} 行，可导入 {valid} 行", { total: result.totalRows, valid: result.validCount ?? 0 })}</span> : null}
               {result.imported !== undefined ? <span>{t("已导入 {n} 行", { n: result.imported })}</span> : null}
             </div>
-            {result.errors.length ? (
+            {result.imported !== undefined ? (
+              // 导入成功后给出明确收尾与下一步，不再展示空预览
+              <Alert
+                showIcon
+                type="success"
+                title={t("成功导入 {n} 条订单", { n: result.imported })}
+                action={<Button size="small" href="/orders">{t("查看订单")}</Button>}
+              />
+            ) : result.errors.length ? (
               <ul className={styles.errorList}>
                 {result.errors.map((error) => <li key={`${error.row}-${error.message}`}>{t("第 {row} 行", { row: error.row })}：{error.message}</li>)}
               </ul>

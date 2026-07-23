@@ -1,3 +1,5 @@
+import { ApiError } from "./api";
+
 export function addCondition(
   conditions: string[],
   params: unknown[],
@@ -26,4 +28,13 @@ export function generatedCode(prefix: string) {
     .toString(36)
     .padStart(2, "0")}`.toUpperCase();
   return `${prefix}-${date}-${suffix}`;
+}
+
+// 自动生成编号：生成后查重，撞号时重试，避免并发/同毫秒冲突直接报错
+export function uniqueCode(prefix: string, exists: (code: string) => boolean) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const code = generatedCode(prefix);
+    if (!exists(code)) return code;
+  }
+  throw new ApiError(500, "CODE_GENERATION_FAILED", "编号生成失败，请重试");
 }

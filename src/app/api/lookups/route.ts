@@ -15,13 +15,13 @@ export async function GET() {
         ORDER BY c.name COLLATE NOCASE
       `)
       .all(...scope.params);
+    // 返回全部产品（含已停用）：新建表单在前端过滤停用项，编辑历史单据时仍能正常回显
     const products = db
       .prepare(`
-        SELECT id, class_name AS className, grade, brand,
+        SELECT id, class_name AS className, grade, brand, status,
           class_name || ' / ' || grade AS label
         FROM products
-        WHERE status = 'active'
-        ORDER BY class_name, grade
+        ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, class_name, grade
       `)
       .all();
     const users = db

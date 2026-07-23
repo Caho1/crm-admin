@@ -1,16 +1,15 @@
 "use client";
 
 import {
-  AuditOutlined,
   CalendarOutlined,
   DashboardOutlined,
   DownOutlined,
-  ExportOutlined,
   FunnelPlotOutlined,
   GlobalOutlined,
   LogoutOutlined,
   MenuOutlined,
   ProductOutlined,
+  SettingOutlined,
   TeamOutlined,
   TruckOutlined,
   UserOutlined,
@@ -53,13 +52,12 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
       { key: "/opportunities", icon: <FunnelPlotOutlined />, label: t("项目机会") },
       { key: "/products", icon: <ProductOutlined />, label: t("产品型号 / 牌号") },
       { key: "/orders", icon: <TruckOutlined />, label: t("订单 / 出货 / 到港") },
-      { key: "/data-center", icon: <ExportOutlined />, label: t("导入导出") },
     ];
+    // 低频管理功能（人员权限 / 数据导入 / 操作日志）收进管理员专属的「设置」页
     if (user.role === "admin") {
       base.push(
         { type: "divider" },
-        { key: "/users", icon: <UserOutlined />, label: t("用户权限") },
-        { key: "/audit-logs", icon: <AuditOutlined />, label: t("审计日志") },
+        { key: "/settings", icon: <SettingOutlined />, label: t("设置") },
       );
     }
     return base;

@@ -37,13 +37,20 @@ export async function GET(_request: Request, context: Context) {
     `).all(id);
     const orders = db.prepare(`
       SELECT ord.id, ord.order_no AS orderNo, ord.order_date AS orderDate, ord.quantity,
-        ord.price, ord.currency, ord.status, p.class_name AS className, p.grade,
+        ord.price, ord.quantity * ord.price AS amount, ord.currency, ord.status, p.class_name AS className, p.grade,
         ord.actual_shipment_date AS actualShipmentDate,
         ord.expected_arrival_date AS expectedArrivalDate
       FROM orders ord JOIN products p ON p.id = ord.product_id
       WHERE ord.customer_id = ? AND ord.deleted_at IS NULL ORDER BY ord.order_date DESC LIMIT 20
     `).all(id);
-    return ok({ customer, contacts, members, visits, opportunities, orders });
+    // 页签数量展示真实总数（列表本身最多返回 20 条）
+    const countOf = (sql: string) => (db.prepare(sql).get(id) as { count: number }).count;
+    const counts = {
+      visits: countOf("SELECT COUNT(*) AS count FROM visits WHERE customer_id = ? AND deleted_at IS NULL"),
+      opportunities: countOf("SELECT COUNT(*) AS count FROM opportunities WHERE customer_id = ? AND deleted_at IS NULL"),
+      orders: countOf("SELECT COUNT(*) AS count FROM orders WHERE customer_id = ? AND deleted_at IS NULL"),
+    };
+    return ok({ customer, contacts, members, visits, opportunities, orders, counts });
   } catch (error) {
     return handleApiError(error);
   }

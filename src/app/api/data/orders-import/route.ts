@@ -39,6 +39,27 @@ function valueOf(row: ExcelJS.Row, mapping: Record<string, number>, field: strin
   return value;
 }
 
+// 状态列同时接受英文代码与中文标签；其余非空值视为错误而不是静默回退
+const STATUS_ALIASES: Record<string, string> = {
+  planned: "planned",
+  待确认: "planned",
+  confirmed: "confirmed",
+  待出货: "confirmed",
+  shipped: "shipped",
+  已出货: "shipped",
+  arrived: "arrived",
+  已到港: "arrived",
+  cancelled: "cancelled",
+  已取消: "cancelled",
+};
+
+function parseStatus(value: unknown, actualShipmentDate: string | null) {
+  const text = String(value ?? "").trim();
+  if (!text) return { status: actualShipmentDate ? "shipped" : "planned", invalid: null as string | null };
+  const mapped = STATUS_ALIASES[text] ?? STATUS_ALIASES[text.toLowerCase()];
+  return mapped ? { status: mapped, invalid: null } : { status: null as string | null, invalid: text };
+}
+
 export async function POST(request: Request) {
   try {
     const admin = await requireApiAdmin();
@@ -88,21 +109,33 @@ export async function POST(request: Request) {
       if (!product) rowErrors.push(`产品“${rawClass} / ${rawGrade}”不存在`);
       if (quantity === null || quantity <= 0) rowErrors.push("数量必须大于 0");
       if (price === null || price < 0) rowErrors.push("单价不能小于 0");
+      // 可选日期列：填了但解析不出来必须报错，不能静默导入为空
+      const optionalDate = (field: string, label: string) => {
+        const raw = valueOf(row, mapping, field);
+        if (raw === null || String(raw).trim() === "") return null;
+        const parsed = parseExcelDate(raw);
+        if (!parsed) rowErrors.push(`${label}格式无效`);
+        return parsed;
+      };
+      const lcTtDate = optionalDate("lcTtDate", "LC/TT 日期");
+      const actualShipmentDate = optionalDate("actualShipmentDate", "实际出货日期");
+      const expectedArrivalDate = optionalDate("expectedArrivalDate", "预计到港日期");
+      const shipmentMonthRaw = valueOf(row, mapping, "shipmentMonth");
+      const shipmentMonth = shipmentMonthRaw === null || String(shipmentMonthRaw).trim() === ""
+        ? null
+        : parseShipmentMonth(shipmentMonthRaw, orderDate);
+      if (shipmentMonthRaw !== null && String(shipmentMonthRaw).trim() !== "" && !shipmentMonth) rowErrors.push("出货月份格式无效");
+      const { status, invalid: invalidStatus } = parseStatus(valueOf(row, mapping, "status"), actualShipmentDate);
+      if (invalidStatus) rowErrors.push(`状态“${invalidStatus}”无效（可用：待确认 / 待出货 / 已出货 / 已到港 / 已取消）`);
       const suppliedOrderNo = String(valueOf(row, mapping, "orderNo") ?? "").trim();
-      if (suppliedOrderNo && db.prepare("SELECT id FROM orders WHERE order_no = ?").get(suppliedOrderNo)) rowErrors.push(`订单编号“${suppliedOrderNo}”已存在`);
+      // 与界面建单同一口径：不区分大小写；已软删订单的编号已释放，可重新导入
+      if (suppliedOrderNo && db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND deleted_at IS NULL").get(suppliedOrderNo)) rowErrors.push(`订单编号“${suppliedOrderNo}”已存在`);
       if (suppliedOrderNo && seenOrderNos.has(suppliedOrderNo.toLowerCase())) rowErrors.push(`订单编号“${suppliedOrderNo}”在文件中重复`);
       if (suppliedOrderNo) seenOrderNos.add(suppliedOrderNo.toLowerCase());
       if (rowErrors.length) {
         errors.push({ row: rowNumber, message: rowErrors.join("；") });
         continue;
       }
-      const actualShipmentDate = parseExcelDate(valueOf(row, mapping, "actualShipmentDate"));
-      const statusInput = String(valueOf(row, mapping, "status") ?? "").trim();
-      const status = ["planned", "confirmed", "shipped", "arrived", "cancelled"].includes(statusInput)
-        ? statusInput
-        : actualShipmentDate
-          ? "shipped"
-          : "planned";
       validRows.push({
         orderNo: suppliedOrderNo || generatedCode("SO"),
         orderDate: orderDate!,
@@ -117,13 +150,13 @@ export async function POST(request: Request) {
         destination: String(valueOf(row, mapping, "destination") ?? "").trim(),
         tradeTerms: String(valueOf(row, mapping, "tradeTerms") ?? "").trim(),
         paymentMethod: String(valueOf(row, mapping, "paymentMethod") ?? "").trim(),
-        shipmentMonth: parseShipmentMonth(valueOf(row, mapping, "shipmentMonth"), orderDate),
-        lcTtDate: parseExcelDate(valueOf(row, mapping, "lcTtDate")),
+        shipmentMonth,
+        lcTtDate,
         actualShipmentDate,
-        expectedArrivalDate: parseExcelDate(valueOf(row, mapping, "expectedArrivalDate")),
+        expectedArrivalDate,
         contractNo: String(valueOf(row, mapping, "contractNo") ?? "").trim(),
         invoiceNo: String(valueOf(row, mapping, "invoiceNo") ?? "").trim(),
-        status,
+        status: status!,
       });
     }
 

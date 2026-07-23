@@ -17,8 +17,13 @@ export async function PUT(request: Request, context: Context) {
     const db = getDb();
     const current = db.prepare("SELECT order_no AS orderNo, owner_id AS ownerId FROM orders WHERE id = ?").get(id) as { orderNo: string; ownerId: number } | undefined;
     if (!current) throw new ApiError(404, "NOT_FOUND", "订单不存在");
+    if (!db.prepare("SELECT id FROM products WHERE id = ?").get(input.productId)) {
+      throw new ApiError(422, "PRODUCT_NOT_FOUND", "产品不存在", { productId: "产品不存在" });
+    }
     const orderNo = input.orderNo || current.orderNo || generatedCode("SO");
-    if (db.prepare("SELECT id FROM orders WHERE order_no = ? AND id <> ?").get(orderNo, id)) throw new ApiError(409, "DUPLICATE_ORDER_NO", "订单编号已存在");
+    if (db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND id <> ? AND deleted_at IS NULL").get(orderNo, id)) {
+      throw new ApiError(409, "DUPLICATE_ORDER_NO", "订单编号已存在");
+    }
     const ownerId = user.role === "admin" && input.ownerId ? input.ownerId : current.ownerId;
     db.prepare(`
       UPDATE orders SET order_no = ?, order_date = ?, customer_id = ?, product_id = ?,
@@ -44,7 +49,12 @@ export async function DELETE(_request: Request, context: Context) {
     assertResourceAccess(user, "orders", id, "edit");
     const db = getDb();
     const row = db.prepare("SELECT order_no AS orderNo FROM orders WHERE id = ?").get(id) as { orderNo: string };
-    db.prepare("UPDATE orders SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(id);
+    // 软删除同时释放业务编号（追加 #del-id 后缀），原编号之后可复用（例如 Excel 重新导入）
+    db.prepare(`
+      UPDATE orders SET deleted_at = datetime('now'), updated_at = datetime('now'),
+        order_no = order_no || '#del-' || id
+      WHERE id = ?
+    `).run(id);
     writeAudit(user.id, "delete", "order", id, `删除订单 ${row.orderNo}`);
     return ok({ id });
   } catch (error) {

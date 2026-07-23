@@ -70,7 +70,7 @@ export function LoginForm() {
           </div>
           <h1 className={styles.title}>{t("登录系统")}</h1>
           <div className={styles.subtitle}>{t("请输入分配给你的账号与密码")}</div>
-          {error ? <Alert className={styles.alert} type="error" showIcon message={error} /> : null}
+          {error ? <Alert className={styles.alert} type="error" showIcon title={error} /> : null}
           <Form<LoginValues> layout="vertical" onFinish={login} requiredMark={false} size="large">
             <Form.Item name="username" label={t("账号")} rules={[{ required: true, message: t("请输入账号") }]}>
               <Input prefix={<UserOutlined />} placeholder={t("请输入账号")} autoComplete="username" />

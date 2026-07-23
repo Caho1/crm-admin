@@ -2,8 +2,19 @@ import { getDb } from "@/db/client";
 import { ApiError, created, handleApiError, ok, paginationFrom, parseBody, requireApiUser } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
 import { assertCustomerAccess, customerCanEdit, customerScope } from "@/lib/permissions";
-import { addCondition, generatedCode, searchLike, whereSql } from "@/lib/query";
+import { addCondition, searchLike, uniqueCode, whereSql } from "@/lib/query";
 import { visitSchema } from "@/lib/validation";
+
+// 校验关联产品真实存在，避免 SQLite 外键违例直接变成 500
+function assertProductsExist(db: ReturnType<typeof getDb>, productIds: number[]) {
+  const ids = [...new Set(productIds)];
+  if (!ids.length) return;
+  const placeholders = ids.map(() => "?").join(", ");
+  const found = (db.prepare(`SELECT COUNT(*) AS count FROM products WHERE id IN (${placeholders})`).get(...ids) as { count: number }).count;
+  if (found !== ids.length) {
+    throw new ApiError(422, "PRODUCT_NOT_FOUND", "包含不存在的产品", { productIds: "包含不存在的产品" });
+  }
+}
 
 export async function GET(request: Request) {
   try {
@@ -61,10 +72,14 @@ export async function POST(request: Request) {
     const input = await parseBody(request, visitSchema);
     assertCustomerAccess(user, input.customerId, "edit");
     const db = getDb();
-    const reportNo = input.reportNo || generatedCode("VR");
-    if (db.prepare("SELECT id FROM visits WHERE report_no = ?").get(reportNo)) {
+    const reportNo = input.reportNo || uniqueCode("VR", (code) =>
+      Boolean(db.prepare("SELECT id FROM visits WHERE report_no = ?").get(code)),
+    );
+    // 查重不区分大小写；已软删的报告编号在删除时已释放，不参与查重
+    if (db.prepare("SELECT id FROM visits WHERE report_no = ? COLLATE NOCASE AND deleted_at IS NULL").get(reportNo)) {
       throw new ApiError(409, "DUPLICATE_REPORT_NO", "报告编号已存在");
     }
+    assertProductsExist(db, input.productIds);
     const id = db.transaction(() => {
       const result = db.prepare(`
         INSERT INTO visits

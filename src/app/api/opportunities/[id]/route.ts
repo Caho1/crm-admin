@@ -1,5 +1,5 @@
 import { getDb } from "@/db/client";
-import { handleApiError, integerId, ok, parseBody, requireApiUser } from "@/lib/api";
+import { ApiError, handleApiError, integerId, ok, parseBody, requireApiUser } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
 import { assertCustomerAccess, assertResourceAccess } from "@/lib/permissions";
 import { opportunitySchema } from "@/lib/validation";
@@ -15,6 +15,9 @@ export async function PUT(request: Request, context: Context) {
     assertCustomerAccess(user, input.customerId, "edit");
     const db = getDb();
     const current = db.prepare("SELECT owner_id AS ownerId FROM opportunities WHERE id = ?").get(id) as { ownerId: number };
+    if (input.productId && !db.prepare("SELECT id FROM products WHERE id = ?").get(input.productId)) {
+      throw new ApiError(422, "PRODUCT_NOT_FOUND", "产品不存在", { productId: "产品不存在" });
+    }
     const ownerId = user.role === "admin" && input.ownerId ? input.ownerId : current.ownerId;
     db.prepare(`
       UPDATE opportunities SET name = ?, customer_id = ?, product_id = ?, stage = ?,

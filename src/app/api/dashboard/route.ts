@@ -1,4 +1,3 @@
-import dayjs from "dayjs";
 import { getDb } from "@/db/client";
 import { handleApiError, ok, requireApiUser } from "@/lib/api";
 import { customerScope } from "@/lib/permissions";
@@ -99,24 +98,9 @@ export async function GET() {
       count: stageRows.find((row) => row.stage === stage)?.count ?? 0,
     }));
 
-    // 近 6 个月订单数趋势（含当月，按下单日期归月）
-    const trendRows = db
-      .prepare(`
-        SELECT strftime('%Y-%m', ord.order_date) AS month, COUNT(*) AS count
-        FROM orders ord
-        JOIN customers c ON c.id = ord.customer_id
-        WHERE ord.deleted_at IS NULL
-          AND ord.order_date >= date('now', '+8 hours', 'start of month', '-5 months')
-          AND ${scope.sql}
-        GROUP BY month
-      `)
-      .all(...scope.params) as Array<{ month: string; count: number }>;
-    const monthlyOrders = Array.from({ length: 6 }, (_, index) => {
-      const month = dayjs().subtract(5 - index, "month").format("YYYY-MM");
-      return { month, count: trendRows.find((row) => row.month === month)?.count ?? 0 };
-    });
+    // 订单趋势改由 /api/dashboard/trend 按粒度单独提供
 
-    return ok({ stats, recentVisits, shipmentAlerts, stageDistribution, monthlyOrders });
+    return ok({ stats, recentVisits, shipmentAlerts, stageDistribution });
   } catch (error) {
     return handleApiError(error);
   }

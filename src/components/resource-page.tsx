@@ -20,22 +20,24 @@ import {
   Popconfirm,
   Select,
   Table,
+  Tag,
   Tooltip,
   type TableProps,
 } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TranslateVars } from "@/lib/i18n";
+import { apiFetch } from "@/lib/client-fetch";
 import { useLocale } from "./providers";
 import { useCurrentUser } from "./user-context";
-import { CustomerDetail } from "./customer-detail";
 import { VisitDetail } from "./visit-detail";
 import { StatusTag } from "./status-tag";
 import styles from "./resource-page.module.css";
 
 export type ResourceKind = "customers" | "visits" | "opportunities" | "products" | "orders";
 type RowData = Record<string, unknown> & { id: number; canEdit?: number };
-type LookupItem = { id: number; name?: string; label?: string; className?: string; grade?: string; role?: string };
+type LookupItem = { id: number; name?: string; label?: string; className?: string; grade?: string; role?: string; status?: string };
 type Lookups = { customers: LookupItem[]; products: LookupItem[]; users: LookupItem[] };
 type Option = { label: string; value: string | number };
 type FieldType = "input" | "textarea" | "select" | "multi" | "date" | "month" | "number";
@@ -76,6 +78,8 @@ type Config = {
   customerFilter?: boolean;
   productFilter?: boolean;
   shipmentMonthFilter?: boolean;
+  dateFilter?: boolean;
+  arrivingFilter?: boolean;
   adminWriteOnly?: boolean;
   columns: Column[];
   fields: Field[];
@@ -161,6 +165,7 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       filterPlaceholder: t("报告状态"),
       filterOptions: visitStatuses,
       customerFilter: true,
+      dateFilter: true,
       columns: [
         { title: t("拜访日期"), dataIndex: "visitDate", width: 120, kind: "date" },
         { title: t("报告编号"), dataIndex: "reportNo", width: 150 },
@@ -265,6 +270,8 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       customerFilter: true,
       productFilter: true,
       shipmentMonthFilter: true,
+      dateFilter: true,
+      arrivingFilter: true,
       columns: [
         { title: t("订单编号"), dataIndex: "orderNo", width: 160, kind: "primary" },
         { title: t("下单日期"), dataIndex: "orderDate", width: 110, kind: "date" },
@@ -272,6 +279,7 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
         { title: t("产品"), key: "product", width: 130, kind: "product" },
         { title: t("数量"), dataIndex: "quantity", width: 80, kind: "number" },
         { title: t("单价"), dataIndex: "price", width: 120, kind: "money", currencyField: "currency" },
+        { title: t("金额"), dataIndex: "amount", width: 130, kind: "money", currencyField: "currency" },
         { title: t("状态"), dataIndex: "status", width: 90, kind: "status" },
         { title: t("实际出货"), dataIndex: "actualShipmentDate", width: 110, kind: "date" },
         { title: t("预计到港"), dataIndex: "expectedArrivalDate", width: 110, kind: "date" },
@@ -304,12 +312,16 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
   };
 }
 
-function optionsFor(field: Field, lookups: Lookups): Option[] {
+function optionsFor(field: Field, lookups: Lookups, t: TFn, editing: boolean): Option[] {
   if (field.options) return field.options;
-  const source = field.source ? lookups[field.source] : [];
+  let source = field.source ? lookups[field.source] : [];
+  // 新建时只能选启用中的产品；编辑历史单据时已停用产品仍要能回显（标注「已停用」）
+  if (field.source === "products" && !editing) source = source.filter((item) => item.status !== "inactive");
   return source.map((item) => ({
     value: item.id,
-    label: item.label || item.name || `${item.className} / ${item.grade}`,
+    label:
+      (item.label || item.name || `${item.className} / ${item.grade}`) +
+      (item.status === "inactive" ? `（${t("已停用")}）` : ""),
   }));
 }
 
@@ -318,8 +330,9 @@ function formatNumber(value: unknown) {
   return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(Number(value));
 }
 
-export function ResourcePage({ resource, initialFilter }: { resource: ResourceKind; initialFilter?: string }) {
+export function ResourcePage({ resource, initialFilter, initialArriving }: { resource: ResourceKind; initialFilter?: string; initialArriving?: boolean }) {
   const { t } = useLocale();
+  const router = useRouter();
   const configs = useMemo(() => buildConfigs(t), [t]);
   const config = configs[resource];
   const user = useCurrentUser();
@@ -330,7 +343,7 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const pageSize = 10; // 固定每页 10 条，不提供页大小切换
   const [total, setTotal] = useState(0);
   const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
@@ -338,12 +351,11 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
   const [customerId, setCustomerId] = useState<number | undefined>();
   const [productId, setProductId] = useState<number | undefined>();
   const [shipmentMonth, setShipmentMonth] = useState<string | undefined>();
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [arrivingSoon, setArrivingSoon] = useState(Boolean(initialArriving));
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<RowData | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailData, setDetailData] = useState<Parameters<typeof CustomerDetail>[0]["data"]>(null);
   const [visitDetail, setVisitDetail] = useState<RowData | null>(null);
   const createHandled = useRef(false);
   const loadSeq = useRef(0);
@@ -351,7 +363,7 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
 
   const loadLookups = useCallback(async () => {
     try {
-      const response = await fetch("/api/lookups");
+      const response = await apiFetch("/api/lookups");
       const payload = await response.json();
       if (response.ok) setLookups(payload.data);
     } catch {
@@ -370,7 +382,10 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
       if (customerId) params.set("customerId", String(customerId));
       if (productId) params.set("productId", String(productId));
       if (shipmentMonth) params.set("shipmentMonth", shipmentMonth);
-      const response = await fetch(`${config.endpoint}?${params}`);
+      if (dateRange?.[0]) params.set("dateFrom", dateRange[0].format("YYYY-MM-DD"));
+      if (dateRange?.[1]) params.set("dateTo", dateRange[1].format("YYYY-MM-DD"));
+      if (arrivingSoon) params.set("arrivingSoon", "1");
+      const response = await apiFetch(`${config.endpoint}?${params}`);
       const payload = await response.json();
       if (seq !== loadSeq.current) return;
       if (!response.ok) throw new Error(payload.error?.message || "数据加载失败");
@@ -381,7 +396,7 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
     } finally {
       if (seq === loadSeq.current) setLoading(false);
     }
-  }, [config.endpoint, config.filterKey, customerId, filter, message, page, pageSize, productId, query, shipmentMonth, t]);
+  }, [arrivingSoon, config.endpoint, config.filterKey, customerId, dateRange, filter, message, page, pageSize, productId, query, shipmentMonth, t]);
 
   useEffect(() => {
     void loadLookups();
@@ -390,6 +405,18 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
   useEffect(() => {
     void loadRows();
   }, [loadRows]);
+
+  // 搜索输入 350ms 防抖自动触发；Enter / 搜索按钮仍可立即搜索
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const next = searchInput.trim();
+      if (next !== query) {
+        setQuery(next);
+        setPage(1);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchInput, query]);
 
   const openCreate = useCallback(() => {
     setEditing(null);
@@ -419,7 +446,7 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
     let values: RowData = record;
     if (resource === "customers") {
       try {
-        const response = await fetch(`/api/customers/${record.id}`);
+        const response = await apiFetch(`/api/customers/${record.id}`);
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error?.message || "客户详情加载失败");
         const firstContact = payload.data.contacts?.[0] || {};
@@ -441,20 +468,9 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
     setModalOpen(true);
   };
 
-  const viewCustomer = async (record: RowData) => {
-    setDetailOpen(true);
-    setDetailLoading(true);
-    try {
-      const response = await fetch(`/api/customers/${record.id}`);
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error?.message || "客户详情加载失败");
-      setDetailData(payload.data);
-    } catch (error) {
-      message.error(t(error instanceof Error ? error.message : "客户详情加载失败"));
-      setDetailOpen(false);
-    } finally {
-      setDetailLoading(false);
-    }
+  // 客户详情改为独立子页，点击客户名 / 查看均跳转 /customers/[id]
+  const viewCustomer = (record: RowData) => {
+    router.push(`/customers/${record.id}`);
   };
 
   const submit = async () => {
@@ -467,7 +483,7 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
         if (field.type === "month") payload[field.name] = value ? value.format("YYYY-MM") : null;
       }
       setSaving(true);
-      const response = await fetch(editing ? `${config.endpoint}/${editing.id}` : config.endpoint, {
+      const response = await apiFetch(editing ? `${config.endpoint}/${editing.id}` : config.endpoint, {
         method: editing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -491,14 +507,24 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
 
   const remove = async (record: RowData) => {
     try {
-      const response = await fetch(`${config.endpoint}/${record.id}`, { method: "DELETE" });
+      const response = await apiFetch(`${config.endpoint}/${record.id}`, { method: "DELETE" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message || "删除失败");
       message.success(resource === "products" ? t("产品已停用") : t("记录已删除"));
-      await loadRows();
+      // 删掉当前页最后一条时自动回退一页，避免停留在空白页
+      if (rows.length === 1 && page > 1) setPage(page - 1);
+      else await loadRows();
     } catch (error) {
       message.error(t(error instanceof Error ? error.message : "删除失败"));
     }
+  };
+
+  // 删除确认里带上业务标识（订单号 / 报告编号 / 名称），防止误删
+  const recordLabel = (record: RowData) => {
+    if (resource === "orders") return String(record.orderNo || record.id);
+    if (resource === "visits") return String(record.reportNo || record.id);
+    if (resource === "products") return [record.className, record.grade].filter(Boolean).join(" / ");
+    return String(record.name || record.id);
   };
 
   const visibleFields = config.fields.filter((field) => !field.adminOnly || user.role === "admin");
@@ -507,7 +533,7 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
       showSearch: true,
       allowClear: !field.required,
       optionFilterProp: "label" as const,
-      options: optionsFor(field, lookups),
+      options: optionsFor(field, lookups, t, Boolean(editing)),
       placeholder: field.placeholder || t("请选择{label}", { label: field.label }),
     };
     let control: React.ReactNode;
@@ -549,7 +575,7 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
         }
         if (column.kind === "primary") {
           const onClick = resource === "customers"
-            ? () => void viewCustomer(record)
+            ? () => viewCustomer(record)
             : resource === "visits"
               ? () => setVisitDetail(record)
               : canWrite && record.canEdit !== 0
@@ -587,7 +613,7 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
         render: (_value, record) => (
           <div className={styles.rowActions}>
             {resource === "customers" ? (
-              <Tooltip title={t("查看客户 360")}><Button type="text" size="small" icon={<EyeOutlined />} aria-label={t("查看")} onClick={() => void viewCustomer(record)} /></Tooltip>
+              <Tooltip title={t("查看客户 360")}><Button type="text" size="small" icon={<EyeOutlined />} aria-label={t("查看")} onClick={() => viewCustomer(record)} /></Tooltip>
             ) : null}
             {resource === "visits" ? (
               <Tooltip title={t("查看报告")}><Button type="text" size="small" icon={<EyeOutlined />} aria-label={t("查看")} onClick={() => setVisitDetail(record)} /></Tooltip>
@@ -596,7 +622,7 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
               <Tooltip title={t("编辑")}><Button type="text" size="small" icon={<EditOutlined />} aria-label={t("编辑")} onClick={() => void openEdit(record)} /></Tooltip>
             ) : null}
             {canWrite && record.canEdit !== 0 ? (
-              <Popconfirm title={resource === "products" ? t("确认停用该产品？") : t("确认删除该记录？")} okText={t("确认")} cancelText={t("取消")} onConfirm={() => void remove(record)}>
+              <Popconfirm title={resource === "products" ? t("确认停用该产品？") : t("确认删除「{name}」？", { name: recordLabel(record) })} okText={t("确认")} cancelText={t("取消")} onConfirm={() => void remove(record)}>
                 <Tooltip title={resource === "products" ? t("停用") : t("删除")}><Button danger type="text" size="small" icon={<DeleteOutlined />} aria-label={t("删除")} /></Tooltip>
               </Popconfirm>
             ) : null}
@@ -614,6 +640,9 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
     if (customerId) params.set("customerId", String(customerId));
     if (productId) params.set("productId", String(productId));
     if (shipmentMonth) params.set("shipmentMonth", shipmentMonth);
+    if (dateRange?.[0]) params.set("dateFrom", dateRange[0].format("YYYY-MM-DD"));
+    if (dateRange?.[1]) params.set("dateTo", dateRange[1].format("YYYY-MM-DD"));
+    if (arrivingSoon) params.set("arrivingSoon", "1");
     window.location.href = `/api/data/orders-export?${params}`;
   };
 
@@ -635,10 +664,7 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
           allowClear
           value={searchInput}
           placeholder={config.searchPlaceholder}
-          onChange={(event) => {
-            setSearchInput(event.target.value);
-            if (!event.target.value) { setQuery(""); setPage(1); }
-          }}
+          onChange={(event) => setSearchInput(event.target.value)}
           onSearch={(value) => { setQuery(value.trim()); setPage(1); }}
         />
         {config.filterOptions ? (
@@ -648,10 +674,23 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
           <Select className={styles.filter} showSearch allowClear optionFilterProp="label" placeholder={t("全部客户")} value={customerId} options={lookups.customers.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => { setCustomerId(value); setPage(1); }} />
         ) : null}
         {config.productFilter ? (
-          <Select className={styles.filter} showSearch allowClear optionFilterProp="label" placeholder={t("全部产品")} value={productId} options={lookups.products.map((item) => ({ value: item.id, label: item.label }))} onChange={(value) => { setProductId(value); setPage(1); }} />
+          <Select className={styles.filter} showSearch allowClear optionFilterProp="label" placeholder={t("全部产品")} value={productId} options={lookups.products.map((item) => ({ value: item.id, label: item.status === "inactive" ? `${item.label}（${t("已停用")}）` : item.label }))} onChange={(value) => { setProductId(value); setPage(1); }} />
         ) : null}
         {config.shipmentMonthFilter ? (
           <DatePicker className={styles.filter} picker="month" format="YYYY-MM" placeholder={t("出货月份")} value={shipmentMonth ? dayjs(`${shipmentMonth}-01`) : null} onChange={(value) => { setShipmentMonth(value ? value.format("YYYY-MM") : undefined); setPage(1); }} />
+        ) : null}
+        {config.dateFilter ? (
+          <DatePicker.RangePicker
+            className={styles.dateRange}
+            value={dateRange}
+            onChange={(value) => { setDateRange(value); setPage(1); }}
+            allowClear
+          />
+        ) : null}
+        {config.arrivingFilter ? (
+          <Tag.CheckableTag className={styles.arrivingChip} checked={arrivingSoon} onChange={(checked) => { setArrivingSoon(checked); setPage(1); }}>
+            {t("14 天内到港")}
+          </Tag.CheckableTag>
         ) : null}
         <Tooltip title={t("刷新")}><Button icon={<ReloadOutlined />} aria-label={t("刷新")} onClick={() => void loadRows()} /></Tooltip>
       </div>
@@ -661,16 +700,23 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
           loading={loading}
           columns={tableColumns}
           dataSource={rows}
+          sticky
           scroll={{ x: Math.max(900, config.columns.reduce((sum, column) => sum + (column.width || 120), 0) + 110) }}
           pagination={{
             current: page,
             pageSize,
             total,
-            showSizeChanger: true,
+            showSizeChanger: false,
             showTotal: (value) => t("共 {n} 条", { n: value }),
-            onChange: (nextPage, nextPageSize) => { setPage(nextPageSize !== pageSize ? 1 : nextPage); setPageSize(nextPageSize); },
+            onChange: (nextPage) => setPage(nextPage),
           }}
-          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无数据")} /> }}
+          locale={{
+            emptyText: (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无数据")}>
+                {canWrite ? <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{config.createLabel}</Button> : null}
+              </Empty>
+            ),
+          }}
         />
       </section>
       <Modal
@@ -691,9 +737,6 @@ export function ResourcePage({ resource, initialFilter }: { resource: ResourceKi
           <div className={styles.formGrid}>{visibleFields.map(renderField)}</div>
         </Form>
       </Modal>
-      {resource === "customers" ? (
-        <CustomerDetail open={detailOpen} loading={detailLoading} data={detailData} onClose={() => { setDetailOpen(false); setDetailData(null); }} />
-      ) : null}
       {resource === "visits" ? (
         <VisitDetail
           open={Boolean(visitDetail)}

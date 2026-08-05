@@ -1,5 +1,6 @@
 import { getDb } from "@/db/client";
 import { handleApiError, ok, requireApiUser } from "@/lib/api";
+import { DICT_TYPES, type DictItem, type DictMap } from "@/lib/dicts";
 import { customerScope } from "@/lib/permissions";
 
 export async function GET() {
@@ -32,7 +33,21 @@ export async function GET() {
         ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END, name
       `)
       .all();
-    return ok({ customers, products, users });
+    // 只下发启用中的标签：停用项不再出现在新建/编辑下拉框里，
+    // 但历史数据里的 code 仍会原样显示（见 dictLabelOf 的兜底）
+    const dictRows = db
+      .prepare(`
+        SELECT id, type, code, label, label_en AS labelEn, label_ko AS labelKo,
+          sort_order AS sortOrder, status
+        FROM dict_items
+        WHERE status = 'active'
+        ORDER BY type, sort_order, id
+      `)
+      .all() as DictItem[];
+    const dicts: DictMap = Object.fromEntries(DICT_TYPES.map((item) => [item.type, []]));
+    for (const row of dictRows) (dicts[row.type] ||= []).push(row);
+
+    return ok({ customers, products, users, dicts });
   } catch (error) {
     return handleApiError(error);
   }

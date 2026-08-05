@@ -1,6 +1,6 @@
 "use client";
 
-import { FileExcelOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
+import { DownloadOutlined, FileExcelOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Empty, Table, Tag, Upload, type TableProps, type UploadFile } from "antd";
 import { useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
@@ -81,9 +81,11 @@ export function DataCenter() {
   return (
     <div>
       <div className={styles.header}>
-        <h2 className={styles.sectionTitle}>{t("订单 Excel 导入")}</h2>
+        <h2 className={styles.sectionTitle}>{t("订单 Excel 导入导出")}</h2>
         <div className={styles.headerActions}>
           <Button icon={<FileExcelOutlined />} href="/api/data/orders-template">{t("下载订单模板")}</Button>
+          {/* 订单列表页已并入客户档案，全量导出的入口收在这里 */}
+          <Button icon={<DownloadOutlined />} href="/api/data/orders-export">{t("导出全部订单")}</Button>
         </div>
       </div>
       <section className={styles.section}>
@@ -122,7 +124,7 @@ export function DataCenter() {
                 showIcon
                 type="success"
                 title={t("成功导入 {n} 条订单", { n: result.imported })}
-                action={<Button size="small" href="/orders">{t("查看订单")}</Button>}
+                action={<Button size="small" href="/customers">{t("查看客户")}</Button>}
               />
             ) : result.errors.length ? (
               <ul className={styles.errorList}>

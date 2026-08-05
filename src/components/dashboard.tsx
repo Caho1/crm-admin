@@ -3,34 +3,36 @@
 import {
   CalendarOutlined,
   ExportOutlined,
-  FunnelPlotOutlined,
   PlusOutlined,
   TeamOutlined,
   TruckOutlined,
 } from "@ant-design/icons";
-import { App, Button, Card, Empty, Segmented, Skeleton, Table, type TableProps } from "antd";
+import { App, Button, Card, Empty, Segmented, Skeleton } from "antd";
 import dayjs from "dayjs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { useLocale } from "./providers";
-import { StageColumns, TrendArea } from "./mini-charts";
-import { StatusTag } from "./status-tag";
+import { AmountArea, GradeBar, ProductClassPie, TrendArea } from "./mini-charts";
 import styles from "./dashboard.module.css";
 
 type DashboardData = {
   stats: {
     customers: number;
     visitsThisMonth: number;
-    opportunities: number;
     ordersThisMonth: number;
     pendingShipment: number;
     arrivingSoon: number;
   };
   recentVisits: Array<Record<string, string | number>>;
   shipmentAlerts: Array<Record<string, string | number | null>>;
-  stageDistribution: Array<{ stage: string; count: number }>;
+};
+
+type DistributionDatum = { name: string; amount: number; quantity: number; orderCount: number };
+type InsightsData = {
+  productClass: DistributionDatum[];
+  topGrades: DistributionDatum[];
 };
 
 type TrendGranularity = "year" | "month" | "week";
@@ -49,15 +51,21 @@ export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [granularity, setGranularity] = useState<TrendGranularity>("month");
-  const [trend, setTrend] = useState<Array<{ bucket: string; count: number }> | null>(null);
+  const [trend, setTrend] = useState<Array<{ bucket: string; count: number; amount: number }> | null>(null);
+  const [insights, setInsights] = useState<InsightsData | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await apiFetch("/api/dashboard");
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error?.message || "工作台加载失败");
+      const [dashboardResponse, insightsResponse] = await Promise.all([
+        apiFetch("/api/dashboard"),
+        apiFetch("/api/dashboard/insights"),
+      ]);
+      const [payload, insightsPayload] = await Promise.all([dashboardResponse.json(), insightsResponse.json()]);
+      if (!dashboardResponse.ok) throw new Error(payload.error?.message || "工作台加载失败");
+      if (!insightsResponse.ok) throw new Error(insightsPayload.error?.message || "工作台加载失败");
       setData(payload.data);
+      setInsights(insightsPayload.data);
     } catch (error) {
       message.error(t(error instanceof Error ? error.message : "工作台加载失败"));
     } finally {
@@ -90,45 +98,26 @@ export function Dashboard() {
   const statItems = data
     ? [
         { label: t("可见客户"), value: data.stats.customers, icon: <TeamOutlined />, color: "#1769aa", bg: "#eaf3fb", href: "/customers" },
-        { label: t("本月拜访"), value: data.stats.visitsThisMonth, icon: <CalendarOutlined />, color: "#2f855a", bg: "#eaf7ef", href: "/visits" },
-        { label: t("推进中商机"), value: data.stats.opportunities, icon: <FunnelPlotOutlined />, color: "#9a6700", bg: "#fff4d6", href: "/opportunities" },
-        { label: t("本月订单"), value: data.stats.ordersThisMonth, icon: <ExportOutlined />, color: "#7c4d9e", bg: "#f3ecf8", href: "/orders" },
-        { label: t("待出货"), value: data.stats.pendingShipment, icon: <TruckOutlined />, color: "#b45309", bg: "#fff0e0", href: "/orders?status=confirmed" },
-        { label: t("14 天内到港"), value: data.stats.arrivingSoon, icon: <TruckOutlined />, color: "#b73e3e", bg: "#fdecec", href: "/orders?arriving=soon" },
+        { label: t("本月拜访"), value: data.stats.visitsThisMonth, icon: <CalendarOutlined />, color: "#2f855a", bg: "#eaf7ef", href: "/customers" },
+        { label: t("本月订单"), value: data.stats.ordersThisMonth, icon: <ExportOutlined />, color: "#7c4d9e", bg: "#f3ecf8", href: "/customers" },
+        { label: t("待出货"), value: data.stats.pendingShipment, icon: <TruckOutlined />, color: "#b45309", bg: "#fff0e0", href: "/customers" },
+        { label: t("14 天内到港"), value: data.stats.arrivingSoon, icon: <TruckOutlined />, color: "#b73e3e", bg: "#fdecec", href: "/customers" },
       ]
     : [];
 
-  const visitColumns: TableProps<Record<string, string | number>>["columns"] = [
-    { title: t("日期"), dataIndex: "visitDate", width: 120 },
-    { title: t("客户"), dataIndex: "customerName", ellipsis: true },
-    { title: t("报告"), dataIndex: "title", ellipsis: true },
-    { title: t("状态"), dataIndex: "status", width: 82, render: (value) => <StatusTag value={value} /> },
-  ];
 
-  const shipmentColumns: TableProps<Record<string, string | number | null>>["columns"] = [
-    { title: t("订单"), dataIndex: "orderNo", width: 140 },
-    { title: t("客户"), dataIndex: "customerName", ellipsis: true },
-    { title: t("产品"), key: "product", width: 120, render: (_, row) => `${row.className} / ${row.grade}` },
-    { title: t("预计到港"), dataIndex: "expectedArrivalDate", width: 120, render: (value) => value || t("待确认") },
-    { title: t("状态"), dataIndex: "status", width: 82, render: (value) => <StatusTag value={String(value)} /> },
-  ];
 
   // locale 变化时 dayjs 全局语言已由 Providers 切换，这里只需按语言选格式
   void locale;
 
-  const stageLabels: Record<string, string> = {
-    lead: t("意向"),
-    sample: t("样品"),
-    testing: t("测试"),
-    quotation: t("报价"),
-    paused: t("暂停"),
-  };
-
   return (
     <div>
+      {/* 栏目名已由顶栏展示，这里只留日期和新建入口 */}
       <div className={styles.pageHeader}>
-        <h1 className={styles.title}>{t("工作台")}</h1>
-        <div className={styles.date}>{dayjs().format(t("YYYY年M月D日 dddd"))}</div>
+        <div className={styles.pageHeaderRight}>
+          <span className={styles.date}>{dayjs().format(t("YYYY年M月D日 dddd"))}</span>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => router.push("/customers?create=1")}>{t("新建客户")}</Button>
+        </div>
       </div>
       {loading && !data ? (
         <Skeleton active paragraph={{ rows: 8 }} />
@@ -137,7 +126,7 @@ export function Dashboard() {
           <div className={styles.stats}>
             {statItems.map((item) => (
               <Link key={item.label} href={item.href} className={styles.statLink}>
-                <Card className={styles.statCard} styles={{ body: { padding: 16 } }}>
+                <Card className={styles.statCard} styles={{ body: { padding: "12px 14px" } }}>
                   <div className={styles.statTop}>
                     <span className={styles.statLabel}>{item.label}</span>
                     <span className={styles.statIcon} style={{ color: item.color, background: item.bg }}>{item.icon}</span>
@@ -147,24 +136,7 @@ export function Dashboard() {
               </Link>
             ))}
           </div>
-          <div className={styles.quickActions}>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => router.push("/customers?create=1")}>{t("新建客户")}</Button>
-            <Button icon={<CalendarOutlined />} onClick={() => router.push("/visits?create=1")}>{t("新建拜访")}</Button>
-            <Button icon={<FunnelPlotOutlined />} onClick={() => router.push("/opportunities?create=1")}>{t("新建商机")}</Button>
-            <Button icon={<TruckOutlined />} onClick={() => router.push("/orders?create=1")}>{t("新建订单")}</Button>
-          </div>
           <div className={styles.charts}>
-            <section className={styles.panel}>
-              <div className={styles.panelHeader}>
-                <h2 className={styles.panelTitle}>{t("商机阶段分布")}</h2>
-                <Button type="link" onClick={() => router.push("/opportunities")}>{t("查看全部")}</Button>
-              </div>
-              <StageColumns
-                data={data.stageDistribution.map((item) => ({ ...item, label: stageLabels[item.stage] || item.stage }))}
-                emptyText={t("暂无推进中商机")}
-                tooltipName={t("商机数")}
-              />
-            </section>
             <section className={styles.panel}>
               <div className={styles.panelHeader}>
                 <h2 className={styles.panelTitle}>{t("订单趋势")}</h2>
@@ -179,7 +151,6 @@ export function Dashboard() {
                       { label: t("周"), value: "week" },
                     ]}
                   />
-                  <Button type="link" onClick={() => router.push("/orders")}>{t("查看全部")}</Button>
                 </div>
               </div>
               {trend ? (
@@ -192,25 +163,52 @@ export function Dashboard() {
                 <div className={styles.chartLoading} />
               )}
             </section>
-          </div>
-          <div className={styles.panels}>
             <section className={styles.panel}>
               <div className={styles.panelHeader}>
-                <h2 className={styles.panelTitle}>{t("最近拜访")}</h2>
-                <Button type="link" onClick={() => router.push("/visits")}>{t("查看全部")}</Button>
+                <h2 className={styles.panelTitle}>{t("订单金额趋势")}</h2>
+                <span className={styles.panelHint}>{t("已排除取消订单")}</span>
               </div>
-              <div className={styles.panelBody}>
-                <Table rowKey="id" size="middle" columns={visitColumns} dataSource={data.recentVisits} pagination={false} scroll={{ x: 600 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }} />
+              {trend ? (
+                <AmountArea
+                  data={trend.map((item) => ({ ...item, ...formatTrendBucket(item.bucket, granularity) }))}
+                  emptyText={t("暂无订单数据")}
+                  tooltipName={t("订单金额")}
+                />
+              ) : (
+                <div className={styles.chartLoading} />
+              )}
+            </section>
+          </div>
+          <div className={styles.charts}>
+            <section className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <h2 className={styles.panelTitle}>{t("产品大类分布")}</h2>
+                <span className={styles.panelHint}>{t("按订单金额")}</span>
               </div>
+              {insights ? (
+                <ProductClassPie
+                  data={insights.productClass}
+                  emptyText={t("暂无订单数据")}
+                  tooltipName={t("订单金额")}
+                />
+              ) : (
+                <div className={styles.chartLoading} />
+              )}
             </section>
             <section className={styles.panel}>
               <div className={styles.panelHeader}>
-                <h2 className={styles.panelTitle}>{t("出货与到港提醒")}</h2>
-                <Button type="link" onClick={() => router.push("/orders")}>{t("查看全部")}</Button>
+                <h2 className={styles.panelTitle}>{t("热销牌号")}</h2>
+                <span className={styles.panelHint}>{t("按订单金额")}</span>
               </div>
-              <div className={styles.panelBody}>
-                <Table rowKey="id" size="middle" columns={shipmentColumns} dataSource={data.shipmentAlerts} pagination={false} scroll={{ x: 650 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }} />
-              </div>
+              {insights ? (
+                <GradeBar
+                  data={insights.topGrades}
+                  emptyText={t("暂无订单数据")}
+                  tooltipName={t("订单金额")}
+                />
+              ) : (
+                <div className={styles.chartLoading} />
+              )}
             </section>
           </div>
         </>

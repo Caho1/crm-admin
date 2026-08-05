@@ -16,10 +16,14 @@ export async function GET(request: Request) {
     addCondition(conditions, params, scope.sql, ...scope.params);
     if (searchParams.get("q")) {
       const value = searchLike(searchParams.get("q"));
+      // 中英文名、地址、国家/地区、行业一并命中：输入「中山」能搜到地址在中山的客户，
+      // 输入英文名片段也能搜到（需求：模糊查找 / 按地域列出客户）
       addCondition(
         conditions,
         params,
-        "(c.name LIKE ? OR c.region LIKE ? OR c.country LIKE ? OR c.industry LIKE ?)",
+        "(c.name LIKE ? OR c.name_en LIKE ? OR c.address LIKE ? OR c.region LIKE ? OR c.country LIKE ? OR c.industry LIKE ?)",
+        value,
+        value,
         value,
         value,
         value,
@@ -28,6 +32,12 @@ export async function GET(request: Request) {
     }
     if (searchParams.get("status")) {
       addCondition(conditions, params, "c.status = ?", searchParams.get("status"));
+    }
+    if (searchParams.get("category")) {
+      addCondition(conditions, params, "c.category = ?", searchParams.get("category"));
+    }
+    if (searchParams.get("industry")) {
+      addCondition(conditions, params, "c.industry = ?", searchParams.get("industry"));
     }
     if (searchParams.get("ownerId")) {
       addCondition(conditions, params, "c.owner_id = ?", Number(searchParams.get("ownerId")));
@@ -38,7 +48,8 @@ export async function GET(request: Request) {
     const total = (db.prepare(`SELECT COUNT(*) AS count FROM customers c ${where}`).get(...params) as { count: number }).count;
     const rows = db
       .prepare(`
-        SELECT c.id, c.name, c.country, c.region, c.industry, c.address, c.description,
+        SELECT c.id, c.name, c.name_en AS nameEn, c.category, c.country, c.region,
+          c.industry, c.address, c.description,
           c.owner_id AS ownerId, owner.name AS ownerName, c.status,
           c.created_at AS createdAt, c.updated_at AS updatedAt,
           (SELECT GROUP_CONCAT(u.name, '、') FROM customer_members cm
@@ -74,9 +85,9 @@ export async function POST(request: Request) {
     const result = db.transaction(() => {
       const inserted = db.prepare(`
         INSERT INTO customers
-          (name, country, region, industry, address, description, owner_id, status, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(input.name, input.country, input.region, input.industry, input.address, input.description, ownerId, input.status, user.id);
+          (name, name_en, category, country, region, industry, address, description, owner_id, status, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(input.name, input.nameEn, input.category, input.country, input.region, input.industry, input.address, input.description, ownerId, input.status, user.id);
       const customerId = Number(inserted.lastInsertRowid);
       const memberInsert = db.prepare(`
         INSERT OR IGNORE INTO customer_members (customer_id, user_id, access) VALUES (?, ?, 'view')

@@ -1,17 +1,14 @@
 "use client";
 
 import {
-  CalendarOutlined,
   DashboardOutlined,
   DownOutlined,
-  FunnelPlotOutlined,
   GlobalOutlined,
   LogoutOutlined,
   MenuOutlined,
   ProductOutlined,
   SettingOutlined,
   TeamOutlined,
-  TruckOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { Avatar, Button, Drawer, Dropdown, Layout, Menu, type MenuProps } from "antd";
@@ -47,11 +44,10 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
   const menuItems = useMemo<MenuProps["items"]>(() => {
     const base: MenuProps["items"] = [
       { key: "/dashboard", icon: <DashboardOutlined />, label: t("工作台") },
+      // 拜访记录与订单都不单列菜单：两者天然绑定客户，
+      // 挂在客户档案页里，从客户进入是唯一入口
       { key: "/customers", icon: <TeamOutlined />, label: t("客户管理") },
-      { key: "/visits", icon: <CalendarOutlined />, label: t("拜访报告") },
-      { key: "/opportunities", icon: <FunnelPlotOutlined />, label: t("项目机会") },
       { key: "/products", icon: <ProductOutlined />, label: t("产品型号 / 牌号") },
-      { key: "/orders", icon: <TruckOutlined />, label: t("订单 / 出货 / 到港") },
     ];
     // 低频管理功能（人员权限 / 数据导入 / 操作日志）收进管理员专属的「设置」页
     if (user.role === "admin") {
@@ -67,6 +63,16 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
     setMobileOpen(false);
     router.push(key);
   };
+
+  // 页面标题统一收到顶栏：按当前路由推导栏目名，
+  // 详情页（客户档案等）也归属对应栏目，页面内不再重复大标题
+  const sectionTitle = useMemo(() => {
+    if (pathname.startsWith("/dashboard")) return t("工作台");
+    if (pathname.startsWith("/customers")) return t("客户管理");
+    if (pathname.startsWith("/products")) return t("产品型号 / 牌号");
+    if (pathname.startsWith("/settings")) return t("设置");
+    return "";
+  }, [pathname, t]);
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -113,6 +119,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
                 aria-label={t("打开导航")}
                 onClick={() => setMobileOpen(true)}
               />
+              {sectionTitle ? <h1 className={styles.pageTitle}>{sectionTitle}</h1> : null}
             </div>
             <div className={styles.headerRight}>
               <Dropdown

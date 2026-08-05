@@ -24,12 +24,6 @@ export async function GET() {
           AND strftime('%Y-%m', v.visit_date) = strftime('%Y-%m', 'now', '+8 hours')
           AND ${scope.sql}
       `),
-      opportunities: scalar(`
-        SELECT COUNT(*) AS count FROM opportunities o
-        JOIN customers c ON c.id = o.customer_id
-        WHERE o.deleted_at IS NULL AND o.status = 'active'
-          AND o.stage NOT IN ('order', 'lost') AND ${scope.sql}
-      `),
       ordersThisMonth: scalar(`
         SELECT COUNT(*) AS count FROM orders ord
         JOIN customers c ON c.id = ord.customer_id
@@ -55,7 +49,7 @@ export async function GET() {
     const recentVisits = db
       .prepare(`
         SELECT v.id, v.report_no AS reportNo, v.title, v.visit_date AS visitDate,
-          v.status, c.name AS customerName, u.name AS creatorName
+          v.status, v.customer_id AS customerId, c.name AS customerName, u.name AS creatorName
         FROM visits v
         JOIN customers c ON c.id = v.customer_id
         JOIN users u ON u.id = v.created_by
@@ -68,7 +62,7 @@ export async function GET() {
     const shipmentAlerts = db
       .prepare(`
         SELECT ord.id, ord.order_no AS orderNo, c.name AS customerName,
-          p.class_name AS className, p.grade, ord.status,
+          ord.customer_id AS customerId, p.class_name AS className, p.grade, ord.status,
           ord.actual_shipment_date AS actualShipmentDate,
           ord.expected_arrival_date AS expectedArrivalDate
         FROM orders ord
@@ -81,26 +75,9 @@ export async function GET() {
       `)
       .all(...scope.params);
 
-    // 推进中商机的阶段分布（与“推进中商机”统计口径一致）
-    const stageRows = db
-      .prepare(`
-        SELECT o.stage AS stage, COUNT(*) AS count
-        FROM opportunities o
-        JOIN customers c ON c.id = o.customer_id
-        WHERE o.deleted_at IS NULL AND o.status = 'active'
-          AND o.stage NOT IN ('order', 'lost') AND ${scope.sql}
-        GROUP BY o.stage
-      `)
-      .all(...scope.params) as Array<{ stage: string; count: number }>;
-    const stageOrder = ["lead", "sample", "testing", "quotation", "paused"];
-    const stageDistribution = stageOrder.map((stage) => ({
-      stage,
-      count: stageRows.find((row) => row.stage === stage)?.count ?? 0,
-    }));
-
     // 订单趋势改由 /api/dashboard/trend 按粒度单独提供
 
-    return ok({ stats, recentVisits, shipmentAlerts, stageDistribution });
+    return ok({ stats, recentVisits, shipmentAlerts });
   } catch (error) {
     return handleApiError(error);
   }

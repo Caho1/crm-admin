@@ -42,6 +42,15 @@
   letter-spacing: -0.01em;
 }
 
+/* 英文名紧跟中文名下方，弱化字重避免和主标题抢焦点 */
+.nameEn {
+  flex-basis: 100%;
+  margin-top: 4px;
+  color: #6b7688;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+
 .headerMeta {
   display: flex;
   flex-wrap: wrap;
@@ -78,6 +87,13 @@
   font-weight: 660;
 }
 
+/* 字段名是扫读详情的锚点：加重字重和颜色，拉开与字段值的层次。
+   antd 的样式运行期注入顺序更靠后，这里加一层 .ant-descriptions 提优先级 */
+.card :global(.ant-descriptions) :global(.ant-descriptions-item-label) {
+  color: #344054;
+  font-weight: 600;
+}
+
 .sideBlock + .sideBlock {
   margin-top: 18px;
 }
@@ -94,6 +110,17 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* ---- 订单 / 拜访记录 tab ---- */
+/* tab 页签行与下方区块贴紧，区块自带的底部 margin 负责和下一段拉开 */
+.recordTabs :global(.ant-tabs-nav) {
+  margin-bottom: 8px;
+}
+
+/* 页签已表达区块名，隐藏区块里重复的标题，只保留条数与操作按钮 */
+.recordTabs .sectionTitle {
+  display: none;
 }
 
 /* ---- 订单履约概要 ---- */

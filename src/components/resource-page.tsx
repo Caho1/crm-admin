@@ -2,11 +2,12 @@
 
 import {
   DeleteOutlined,
-  DownloadOutlined,
   EditOutlined,
   EyeOutlined,
+  AppstoreOutlined,
   PlusOutlined,
   ReloadOutlined,
+  UnorderedListOutlined,
 } from "@ant-design/icons";
 import {
   App,
@@ -18,6 +19,8 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Pagination,
+  Segmented,
   Select,
   Table,
   Tag,
@@ -29,16 +32,16 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TranslateVars } from "@/lib/i18n";
 import { apiFetch } from "@/lib/client-fetch";
+import { dictLabel, dictLabelOf, type DictMap, type DictType } from "@/lib/dicts";
 import { useLocale } from "./providers";
 import { useCurrentUser } from "./user-context";
-import { VisitDetail } from "./visit-detail";
 import { StatusTag } from "./status-tag";
 import styles from "./resource-page.module.css";
 
-export type ResourceKind = "customers" | "visits" | "opportunities" | "products" | "orders";
+export type ResourceKind = "customers" | "products";
 type RowData = Record<string, unknown> & { id: number; canEdit?: number };
 type LookupItem = { id: number; name?: string; label?: string; className?: string; grade?: string; role?: string; status?: string };
-type Lookups = { customers: LookupItem[]; products: LookupItem[]; users: LookupItem[] };
+type Lookups = { customers: LookupItem[]; products: LookupItem[]; users: LookupItem[]; dicts: DictMap };
 type Option = { label: string; value: string | number };
 type FieldType = "input" | "textarea" | "select" | "multi" | "date" | "month" | "number";
 type Field = {
@@ -48,7 +51,9 @@ type Field = {
   required?: boolean;
   full?: boolean;
   adminOnly?: boolean;
-  source?: keyof Lookups;
+  source?: "customers" | "products" | "users";
+  /** 取「设置 → 标签配置」里维护的下拉选项 */
+  dictType?: DictType;
   options?: Option[];
   placeholder?: string;
   rows?: number;
@@ -62,12 +67,15 @@ type Column = {
   key?: string;
   width?: number;
   ellipsis?: boolean;
-  kind?: "primary" | "status" | "product" | "money" | "date" | "number";
+  kind?: "primary" | "status" | "product" | "money" | "date" | "number" | "dict";
+  dictType?: DictType;
   classField?: string;
   currencyField?: string;
 };
+/** 由标签字典驱动的列表筛选下拉 */
+type DictFilter = { key: string; dictType: DictType; placeholder: string };
+// 栏目名由 AppShell 顶栏统一展示，Config 不再带 title
 type Config = {
-  title: string;
   endpoint: string;
   createLabel: string;
   editLabel: string;
@@ -75,11 +83,7 @@ type Config = {
   filterKey?: string;
   filterPlaceholder?: string;
   filterOptions?: Option[];
-  customerFilter?: boolean;
-  productFilter?: boolean;
-  shipmentMonthFilter?: boolean;
-  dateFilter?: boolean;
-  arrivingFilter?: boolean;
+  dictFilters?: DictFilter[];
   adminWriteOnly?: boolean;
   columns: Column[];
   fields: Field[];
@@ -95,58 +99,43 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
     { label: t("活跃客户"), value: "active" },
     { label: t("已停用"), value: "inactive" },
   ];
-  const visitStatuses: Option[] = [
-    { label: t("草稿"), value: "draft" },
-    { label: t("已完成"), value: "completed" },
-    { label: t("已归档"), value: "archived" },
-  ];
-  const opportunityStages: Option[] = [
-    { label: t("意向"), value: "lead" },
-    { label: t("样品"), value: "sample" },
-    { label: t("测试"), value: "testing" },
-    { label: t("报价"), value: "quotation" },
-    { label: t("已成单"), value: "order" },
-    { label: t("暂停"), value: "paused" },
-    { label: t("失败"), value: "lost" },
-  ];
-  const orderStatuses: Option[] = [
-    { label: t("待确认"), value: "planned" },
-    { label: t("待出货"), value: "confirmed" },
-    { label: t("已出货"), value: "shipped" },
-    { label: t("已到港"), value: "arrived" },
-    { label: t("已取消"), value: "cancelled" },
-  ];
 
   return {
     customers: {
-      title: t("客户管理"),
       endpoint: "/api/customers",
       createLabel: t("新建客户"),
       editLabel: t("编辑客户"),
-      searchPlaceholder: t("客户名称、地区、行业"),
+      searchPlaceholder: t("中英文名称、地址、地区、行业"),
       filterKey: "status",
       filterPlaceholder: t("客户状态"),
       filterOptions: customerStatuses,
+      dictFilters: [
+        { key: "category", dictType: "customer_category", placeholder: t("全部分类") },
+        { key: "industry", dictType: "industry", placeholder: t("全部行业") },
+      ],
       columns: [
-        { title: t("客户名称"), dataIndex: "name", width: 210, kind: "primary", ellipsis: true },
+        { title: t("客户名称"), dataIndex: "name", width: 200, kind: "primary", ellipsis: true },
+        { title: t("英文名称"), dataIndex: "nameEn", width: 190, ellipsis: true },
+        { title: t("客户分类"), dataIndex: "category", width: 110, kind: "dict", dictType: "customer_category" },
         { title: t("国家 / 地区"), key: "location", width: 130 },
-        { title: t("行业"), dataIndex: "industry", width: 110, ellipsis: true },
+        { title: t("行业"), dataIndex: "industry", width: 110, kind: "dict", dictType: "industry" },
         { title: t("负责人"), dataIndex: "ownerName", width: 100 },
         { title: t("协作人"), dataIndex: "memberNames", width: 110, ellipsis: true },
         { title: t("最近拜访"), dataIndex: "latestVisitDate", width: 110, kind: "date" },
-        { title: t("商机"), dataIndex: "opportunityCount", width: 70, kind: "number" },
         { title: t("订单"), dataIndex: "orderCount", width: 70, kind: "number" },
         { title: t("状态"), dataIndex: "status", width: 100, kind: "status" },
       ],
       fields: [
-        { name: "name", label: t("客户名称"), type: "input", required: true, full: true },
+        { name: "name", label: t("客户名称（中文）"), type: "input", required: true, full: true },
+        { name: "nameEn", label: t("客户名称（英文）"), type: "input", full: true, placeholder: t("完整英文名称，便于按英文模糊查找") },
+        { name: "category", label: t("客户分类"), type: "select", dictType: "customer_category" },
         { name: "status", label: t("客户状态"), type: "select", required: true, options: customerStatuses },
+        { name: "industry", label: t("行业"), type: "select", dictType: "industry" },
         { name: "ownerId", label: t("负责人"), type: "select", source: "users", adminOnly: true },
         { name: "country", label: t("国家"), type: "input" },
         { name: "region", label: t("地区"), type: "input" },
-        { name: "industry", label: t("行业"), type: "input" },
         { name: "memberIds", label: t("协作成员"), type: "multi", source: "users", adminOnly: true },
-        { name: "address", label: t("详细地址"), type: "input", full: true },
+        { name: "address", label: t("详细地址"), type: "input", full: true, placeholder: t("详细到街道门牌，搜索时可按地址关键词查找") },
         { name: "description", label: t("客户简介"), type: "textarea", rows: 3, full: true, maxLength: 2000 },
         { name: "contactName", label: t("主要联系人"), type: "input" },
         { name: "contactTitle", label: t("联系人职位"), type: "input" },
@@ -155,80 +144,7 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       ],
       defaults: (userId) => ({ status: "potential", ownerId: userId, memberIds: [] }),
     },
-    visits: {
-      title: t("拜访报告"),
-      endpoint: "/api/visits",
-      createLabel: t("新建拜访"),
-      editLabel: t("编辑拜访"),
-      searchPlaceholder: t("标题、报告编号、客户、纪要"),
-      filterKey: "status",
-      filterPlaceholder: t("报告状态"),
-      filterOptions: visitStatuses,
-      customerFilter: true,
-      dateFilter: true,
-      columns: [
-        { title: t("拜访日期"), dataIndex: "visitDate", width: 120, kind: "date" },
-        { title: t("报告编号"), dataIndex: "reportNo", width: 150 },
-        { title: t("标题"), dataIndex: "title", width: 230, kind: "primary", ellipsis: true },
-        { title: t("客户"), dataIndex: "customerName", width: 165, ellipsis: true },
-        { title: t("关联产品"), dataIndex: "productLabels", width: 150, ellipsis: true },
-        { title: t("创建人"), dataIndex: "creatorName", width: 90 },
-        { title: t("状态"), dataIndex: "status", width: 90, kind: "status" },
-      ],
-      fields: [
-        { name: "reportNo", label: t("报告编号"), type: "input", placeholder: t("留空自动生成") },
-        { name: "status", label: t("报告状态"), type: "select", required: true, options: visitStatuses },
-        { name: "title", label: t("报告标题"), type: "input", required: true, full: true },
-        { name: "customerId", label: t("客户"), type: "select", source: "customers", required: true },
-        { name: "visitDate", label: t("拜访日期"), type: "date", required: true },
-        { name: "productIds", label: t("关联产品型号 / 牌号"), type: "multi", source: "products", full: true },
-        { name: "internalParticipants", label: t("我方参加人员"), type: "input", required: true },
-        { name: "customerParticipants", label: t("客户方参加人员"), type: "input", required: true },
-        { name: "companyProfile", label: t("客户公司简介"), type: "textarea", rows: 3, required: true, full: true, maxLength: 3000 },
-        { name: "meetingNotes", label: t("沟通纪要"), type: "textarea", rows: 5, required: true, full: true, maxLength: 8000 },
-        { name: "followUp", label: t("后续跟进事项"), type: "textarea", rows: 4, required: true, full: true, maxLength: 3000 },
-      ],
-      defaults: () => ({ status: "draft", visitDate: dayjs(), productIds: [] }),
-    },
-    opportunities: {
-      title: t("项目机会"),
-      endpoint: "/api/opportunities",
-      createLabel: t("新建商机"),
-      editLabel: t("编辑商机"),
-      searchPlaceholder: t("商机、客户、产品、下一步"),
-      filterKey: "stage",
-      filterPlaceholder: t("商机阶段"),
-      filterOptions: opportunityStages,
-      customerFilter: true,
-      productFilter: true,
-      columns: [
-        { title: t("商机名称"), dataIndex: "name", width: 200, kind: "primary", ellipsis: true },
-        { title: t("客户"), dataIndex: "customerName", width: 150, ellipsis: true },
-        { title: t("产品"), key: "product", width: 130, kind: "product" },
-        { title: t("阶段"), dataIndex: "stage", width: 90, kind: "status" },
-        { title: t("预计金额"), dataIndex: "estimatedAmount", width: 130, kind: "money", currencyField: "currency" },
-        { title: t("负责人"), dataIndex: "ownerName", width: 90 },
-        { title: t("下一步"), dataIndex: "nextAction", width: 160, ellipsis: true },
-        { title: t("下次跟进"), dataIndex: "nextFollowUpDate", width: 110, kind: "date" },
-      ],
-      fields: [
-        { name: "name", label: t("商机名称"), type: "input", required: true, full: true },
-        { name: "customerId", label: t("客户"), type: "select", source: "customers", required: true },
-        { name: "productId", label: t("产品型号 / 牌号"), type: "select", source: "products" },
-        { name: "stage", label: t("商机阶段"), type: "select", required: true, options: opportunityStages },
-        { name: "status", label: t("商机状态"), type: "select", required: true, options: [{ label: t("进行中"), value: "active" }, { label: t("已关闭"), value: "closed" }] },
-        { name: "estimatedQuantity", label: t("预计数量"), type: "number", min: 0, precision: 2 },
-        { name: "estimatedAmount", label: t("预计金额"), type: "number", min: 0, precision: 2 },
-        { name: "currency", label: t("币种"), type: "select", options: ["USD", "CNY", "KRW", "HKD"].map((value) => ({ label: value, value })) },
-        { name: "ownerId", label: t("负责人"), type: "select", source: "users", adminOnly: true },
-        { name: "nextFollowUpDate", label: t("下次跟进日期"), type: "date" },
-        { name: "nextAction", label: t("下一步动作"), type: "textarea", rows: 3, full: true, maxLength: 1000 },
-        { name: "notes", label: t("备注"), type: "textarea", rows: 3, full: true, maxLength: 3000 },
-      ],
-      defaults: (userId) => ({ stage: "lead", status: "active", currency: "USD", ownerId: userId }),
-    },
     products: {
-      title: t("产品型号 / 牌号"),
       endpoint: "/api/products",
       createLabel: t("新建产品"),
       editLabel: t("编辑产品"),
@@ -237,18 +153,18 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       filterPlaceholder: t("产品状态"),
       filterOptions: [{ label: t("启用"), value: "active" }, { label: t("停用"), value: "inactive" }],
       adminWriteOnly: true,
+      dictFilters: [{ key: "className", dictType: "product_class", placeholder: t("全部大类") }],
       columns: [
-        { title: t("产品大类"), dataIndex: "className", width: 100 },
+        { title: t("产品大类"), dataIndex: "className", width: 100, kind: "dict", dictType: "product_class" },
         { title: t("型号 / 牌号（Grade）"), dataIndex: "grade", width: 180, kind: "primary" },
         { title: t("品牌"), dataIndex: "brand", width: 130, ellipsis: true },
         { title: t("供应商"), dataIndex: "supplier", width: 140, ellipsis: true },
         { title: t("用途"), dataIndex: "application", width: 200, ellipsis: true },
-        { title: t("商机"), dataIndex: "opportunityCount", width: 70, kind: "number" },
         { title: t("订单"), dataIndex: "orderCount", width: 70, kind: "number" },
         { title: t("状态"), dataIndex: "status", width: 85, kind: "status" },
       ],
       fields: [
-        { name: "className", label: t("产品大类"), type: "input", required: true },
+        { name: "className", label: t("产品大类"), type: "select", dictType: "product_class", required: true },
         { name: "grade", label: t("型号 / 牌号（Grade）"), type: "input", required: true },
         { name: "brand", label: t("品牌"), type: "input" },
         { name: "supplier", label: t("供应商"), type: "input" },
@@ -258,62 +174,18 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       ],
       defaults: () => ({ status: "active" }),
     },
-    orders: {
-      title: t("订单 / 出货 / 到港"),
-      endpoint: "/api/orders",
-      createLabel: t("新建订单"),
-      editLabel: t("编辑订单"),
-      searchPlaceholder: t("订单、客户、产品、合同号、发票号"),
-      filterKey: "status",
-      filterPlaceholder: t("履约状态"),
-      filterOptions: orderStatuses,
-      customerFilter: true,
-      productFilter: true,
-      shipmentMonthFilter: true,
-      dateFilter: true,
-      arrivingFilter: true,
-      columns: [
-        { title: t("订单编号"), dataIndex: "orderNo", width: 160, kind: "primary" },
-        { title: t("下单日期"), dataIndex: "orderDate", width: 110, kind: "date" },
-        { title: t("客户"), dataIndex: "customerName", width: 150, ellipsis: true },
-        { title: t("产品"), key: "product", width: 130, kind: "product" },
-        { title: t("数量"), dataIndex: "quantity", width: 80, kind: "number" },
-        { title: t("单价"), dataIndex: "price", width: 120, kind: "money", currencyField: "currency" },
-        { title: t("金额"), dataIndex: "amount", width: 130, kind: "money", currencyField: "currency" },
-        { title: t("状态"), dataIndex: "status", width: 90, kind: "status" },
-        { title: t("实际出货"), dataIndex: "actualShipmentDate", width: 110, kind: "date" },
-        { title: t("预计到港"), dataIndex: "expectedArrivalDate", width: 110, kind: "date" },
-        { title: t("合同号"), dataIndex: "contractNo", width: 110 },
-        { title: t("发票号"), dataIndex: "invoiceNo", width: 110 },
-      ],
-      fields: [
-        { name: "orderNo", label: t("订单编号"), type: "input", placeholder: t("留空自动生成") },
-        { name: "status", label: t("履约状态"), type: "select", required: true, options: orderStatuses },
-        { name: "orderDate", label: t("下单日期"), type: "date", required: true },
-        { name: "customerId", label: t("客户"), type: "select", source: "customers", required: true },
-        { name: "productId", label: t("产品型号 / 牌号"), type: "select", source: "products", required: true },
-        { name: "ownerId", label: t("负责人"), type: "select", source: "users", adminOnly: true },
-        { name: "quantity", label: t("数量"), type: "number", required: true, min: 0, precision: 2 },
-        { name: "price", label: t("单价"), type: "number", required: true, min: 0, precision: 2 },
-        { name: "currency", label: t("币种"), type: "select", options: ["USD", "CNY", "KRW", "HKD"].map((value) => ({ label: value, value })) },
-        { name: "destination", label: t("目的地"), type: "input" },
-        { name: "tradeTerms", label: t("贸易条款"), type: "input", placeholder: t("如 CFR、FOB") },
-        { name: "paymentMethod", label: t("付款方式"), type: "input", placeholder: t("如 TT AD、LC") },
-        { name: "shipmentMonth", label: t("出货月份"), type: "month" },
-        { name: "lcTtDate", label: t("LC / TT 日期"), type: "date" },
-        { name: "actualShipmentDate", label: t("实际出货日期"), type: "date" },
-        { name: "expectedArrivalDate", label: t("预计到港日期"), type: "date" },
-        { name: "contractNo", label: t("合同号"), type: "input" },
-        { name: "invoiceNo", label: t("发票号"), type: "input" },
-        { name: "notes", label: t("备注"), type: "textarea", rows: 3, full: true, maxLength: 2000 },
-      ],
-      defaults: (userId) => ({ status: "planned", orderDate: dayjs(), currency: "USD", ownerId: userId }),
-    },
   };
 }
 
-function optionsFor(field: Field, lookups: Lookups, t: TFn, editing: boolean): Option[] {
+function optionsFor(field: Field, lookups: Lookups, t: TFn, editing: boolean, locale: string): Option[] {
   if (field.options) return field.options;
+  // 标签字典驱动的下拉：选项来自「设置 → 标签配置」，存 code、显示当前语言的 label
+  if (field.dictType) {
+    return (lookups.dicts?.[field.dictType] || []).map((item) => ({
+      value: item.code,
+      label: dictLabel(item, locale),
+    }));
+  }
   let source = field.source ? lookups[field.source] : [];
   // 新建时只能选启用中的产品；编辑历史单据时已停用产品仍要能回显（标注「已停用」）
   if (field.source === "products" && !editing) source = source.filter((item) => item.status !== "inactive");
@@ -330,8 +202,8 @@ function formatNumber(value: unknown) {
   return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(Number(value));
 }
 
-export function ResourcePage({ resource, initialFilter, initialArriving }: { resource: ResourceKind; initialFilter?: string; initialArriving?: boolean }) {
-  const { t } = useLocale();
+export function ResourcePage({ resource }: { resource: ResourceKind }) {
+  const { t, locale } = useLocale();
   const router = useRouter();
   const configs = useMemo(() => buildConfigs(t), [t]);
   const config = configs[resource];
@@ -339,7 +211,7 @@ export function ResourcePage({ resource, initialFilter, initialArriving }: { res
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [rows, setRows] = useState<RowData[]>([]);
-  const [lookups, setLookups] = useState<Lookups>({ customers: [], products: [], users: [] });
+  const [lookups, setLookups] = useState<Lookups>({ customers: [], products: [], users: [], dicts: {} });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
@@ -347,16 +219,24 @@ export function ResourcePage({ resource, initialFilter, initialArriving }: { res
   const [total, setTotal] = useState(0);
   const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<string | undefined>(initialFilter);
-  const [customerId, setCustomerId] = useState<number | undefined>();
-  const [productId, setProductId] = useState<number | undefined>();
-  const [shipmentMonth, setShipmentMonth] = useState<string | undefined>();
-  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-  const [arrivingSoon, setArrivingSoon] = useState(Boolean(initialArriving));
+  const [filter, setFilter] = useState<string | undefined>();
+  // 标签筛选统一放一个 map 里：新增一类标签筛选不用再加一个 useState
+  const [dictFilter, setDictFilter] = useState<Record<string, string | undefined>>({});
+  // 卡片 / 列表视图切换：只有客户列表提供卡片视图，选择记在 localStorage
+  const supportsCards = resource === "customers";
+  const [view, setView] = useState<"list" | "card">("list");
+  useEffect(() => {
+    if (!supportsCards) return;
+    const saved = window.localStorage.getItem("crm_customers_view");
+    if (saved === "card" || saved === "list") setView(saved);
+  }, [supportsCards]);
+  const changeView = (next: "list" | "card") => {
+    setView(next);
+    window.localStorage.setItem("crm_customers_view", next);
+  };
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<RowData | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
-  const [visitDetail, setVisitDetail] = useState<RowData | null>(null);
   const createHandled = useRef(false);
   const loadSeq = useRef(0);
   const canWrite = !config.adminWriteOnly || user.role === "admin";
@@ -379,12 +259,7 @@ export function ResourcePage({ resource, initialFilter, initialArriving }: { res
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
       if (query) params.set("q", query);
       if (filter && config.filterKey) params.set(config.filterKey, filter);
-      if (customerId) params.set("customerId", String(customerId));
-      if (productId) params.set("productId", String(productId));
-      if (shipmentMonth) params.set("shipmentMonth", shipmentMonth);
-      if (dateRange?.[0]) params.set("dateFrom", dateRange[0].format("YYYY-MM-DD"));
-      if (dateRange?.[1]) params.set("dateTo", dateRange[1].format("YYYY-MM-DD"));
-      if (arrivingSoon) params.set("arrivingSoon", "1");
+      for (const [key, value] of Object.entries(dictFilter)) if (value) params.set(key, value);
       const response = await apiFetch(`${config.endpoint}?${params}`);
       const payload = await response.json();
       if (seq !== loadSeq.current) return;
@@ -396,7 +271,7 @@ export function ResourcePage({ resource, initialFilter, initialArriving }: { res
     } finally {
       if (seq === loadSeq.current) setLoading(false);
     }
-  }, [arrivingSoon, config.endpoint, config.filterKey, customerId, dateRange, filter, message, page, pageSize, productId, query, shipmentMonth, t]);
+  }, [config.endpoint, config.filterKey, dictFilter, filter, message, page, pageSize, query, t]);
 
   useEffect(() => {
     void loadLookups();
@@ -521,8 +396,6 @@ export function ResourcePage({ resource, initialFilter, initialArriving }: { res
 
   // 删除确认里带上业务标识（订单号 / 报告编号 / 名称），防止误删
   const recordLabel = (record: RowData) => {
-    if (resource === "orders") return String(record.orderNo || record.id);
-    if (resource === "visits") return String(record.reportNo || record.id);
     if (resource === "products") return [record.className, record.grade].filter(Boolean).join(" / ");
     return String(record.name || record.id);
   };
@@ -533,7 +406,7 @@ export function ResourcePage({ resource, initialFilter, initialArriving }: { res
       showSearch: true,
       allowClear: !field.required,
       optionFilterProp: "label" as const,
-      options: optionsFor(field, lookups, t, Boolean(editing)),
+      options: optionsFor(field, lookups, t, Boolean(editing), locale),
       placeholder: field.placeholder || t("请选择{label}", { label: field.label }),
     };
     let control: React.ReactNode;
@@ -576,11 +449,9 @@ export function ResourcePage({ resource, initialFilter, initialArriving }: { res
         if (column.kind === "primary") {
           const onClick = resource === "customers"
             ? () => viewCustomer(record)
-            : resource === "visits"
-              ? () => setVisitDetail(record)
-              : canWrite && record.canEdit !== 0
-                ? () => void openEdit(record)
-                : undefined;
+            : canWrite && record.canEdit !== 0
+              ? () => void openEdit(record)
+              : undefined;
           return (
             <span className={onClick ? styles.primaryCell : styles.primaryCellStatic} onClick={onClick}>
               {String(value || "-")}
@@ -591,6 +462,11 @@ export function ResourcePage({ resource, initialFilter, initialArriving }: { res
           const statusValue = String(value || "");
           const label = config.filterOptions?.find((option) => option.value === statusValue)?.label;
           return <StatusTag value={statusValue} label={label} />;
+        }
+        if (column.kind === "dict") {
+          const code = String(value || "");
+          if (!code) return <span className={styles.muted}>-</span>;
+          return <Tag>{dictLabelOf(column.dictType ? lookups.dicts?.[column.dictType] : undefined, code, locale)}</Tag>;
         }
         if (column.kind === "product") {
           if (!record.grade) return <span className={styles.muted}>-</span>;
@@ -604,7 +480,7 @@ export function ResourcePage({ resource, initialFilter, initialArriving }: { res
         return value === null || value === undefined || value === "" ? <span className={styles.muted}>-</span> : String(value);
       },
     }));
-    if (canWrite || resource === "customers" || resource === "visits") {
+    if (canWrite || resource === "customers") {
       columns.push({
         title: t("操作"),
         key: "actions",
@@ -614,9 +490,6 @@ export function ResourcePage({ resource, initialFilter, initialArriving }: { res
           <div className={styles.rowActions}>
             {resource === "customers" ? (
               <Tooltip title={t("查看客户 360")}><Button type="text" size="small" icon={<EyeOutlined />} aria-label={t("查看")} onClick={() => viewCustomer(record)} /></Tooltip>
-            ) : null}
-            {resource === "visits" ? (
-              <Tooltip title={t("查看报告")}><Button type="text" size="small" icon={<EyeOutlined />} aria-label={t("查看")} onClick={() => setVisitDetail(record)} /></Tooltip>
             ) : null}
             {canWrite && record.canEdit !== 0 ? (
               <Tooltip title={t("编辑")}><Button type="text" size="small" icon={<EditOutlined />} aria-label={t("编辑")} onClick={() => void openEdit(record)} /></Tooltip>
@@ -633,28 +506,14 @@ export function ResourcePage({ resource, initialFilter, initialArriving }: { res
     return columns;
   })();
 
-  const exportOrders = () => {
-    const params = new URLSearchParams();
-    if (query) params.set("q", query);
-    if (filter) params.set("status", filter);
-    if (customerId) params.set("customerId", String(customerId));
-    if (productId) params.set("productId", String(productId));
-    if (shipmentMonth) params.set("shipmentMonth", shipmentMonth);
-    if (dateRange?.[0]) params.set("dateFrom", dateRange[0].format("YYYY-MM-DD"));
-    if (dateRange?.[1]) params.set("dateTo", dateRange[1].format("YYYY-MM-DD"));
-    if (arrivingSoon) params.set("arrivingSoon", "1");
-    window.location.href = `/api/data/orders-export?${params}`;
-  };
-
   return (
     <div className={styles.page}>
+      {/* 栏目名已由顶栏展示，这里只保留条数和新建入口 */}
       <div className={styles.pageHeader}>
         <div className={styles.titleGroup}>
-          <h1 className={styles.title}>{config.title}</h1>
           <span className={styles.total}>{t("{n} 条", { n: total })}</span>
         </div>
         <div className={styles.actions}>
-          {resource === "orders" ? <Button icon={<DownloadOutlined />} onClick={exportOrders}>{t("导出当前筛选")}</Button> : null}
           {canWrite ? <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{config.createLabel}</Button> : null}
         </div>
       </div>
@@ -670,55 +529,127 @@ export function ResourcePage({ resource, initialFilter, initialArriving }: { res
         {config.filterOptions ? (
           <Select className={styles.filter} allowClear placeholder={config.filterPlaceholder} options={config.filterOptions} value={filter} onChange={(value) => { setFilter(value); setPage(1); }} />
         ) : null}
-        {config.customerFilter ? (
-          <Select className={styles.filter} showSearch allowClear optionFilterProp="label" placeholder={t("全部客户")} value={customerId} options={lookups.customers.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => { setCustomerId(value); setPage(1); }} />
-        ) : null}
-        {config.productFilter ? (
-          <Select className={styles.filter} showSearch allowClear optionFilterProp="label" placeholder={t("全部产品")} value={productId} options={lookups.products.map((item) => ({ value: item.id, label: item.status === "inactive" ? `${item.label}（${t("已停用")}）` : item.label }))} onChange={(value) => { setProductId(value); setPage(1); }} />
-        ) : null}
-        {config.shipmentMonthFilter ? (
-          <DatePicker className={styles.filter} picker="month" format="YYYY-MM" placeholder={t("出货月份")} value={shipmentMonth ? dayjs(`${shipmentMonth}-01`) : null} onChange={(value) => { setShipmentMonth(value ? value.format("YYYY-MM") : undefined); setPage(1); }} />
-        ) : null}
-        {config.dateFilter ? (
-          <DatePicker.RangePicker
-            className={styles.dateRange}
-            value={dateRange}
-            onChange={(value) => { setDateRange(value); setPage(1); }}
+        {config.dictFilters?.map((item) => (
+          <Select
+            key={item.key}
+            className={styles.filter}
             allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder={item.placeholder}
+            value={dictFilter[item.key]}
+            options={(lookups.dicts?.[item.dictType] || []).map((option) => ({ value: option.code, label: dictLabel(option, locale) }))}
+            onChange={(value) => { setDictFilter((prev) => ({ ...prev, [item.key]: value })); setPage(1); }}
+          />
+        ))}
+        <Tooltip title={t("刷新")}><Button icon={<ReloadOutlined />} aria-label={t("刷新")} onClick={() => void loadRows()} /></Tooltip>
+        {supportsCards ? (
+          <Segmented
+            className={styles.viewSwitch}
+            value={view}
+            onChange={(value) => changeView(value as "list" | "card")}
+            options={[
+              { value: "list", icon: <UnorderedListOutlined />, title: t("列表视图") },
+              { value: "card", icon: <AppstoreOutlined />, title: t("卡片视图") },
+            ]}
           />
         ) : null}
-        {config.arrivingFilter ? (
-          <Tag.CheckableTag className={styles.arrivingChip} checked={arrivingSoon} onChange={(checked) => { setArrivingSoon(checked); setPage(1); }}>
-            {t("14 天内到港")}
-          </Tag.CheckableTag>
-        ) : null}
-        <Tooltip title={t("刷新")}><Button icon={<ReloadOutlined />} aria-label={t("刷新")} onClick={() => void loadRows()} /></Tooltip>
       </div>
-      <section className={styles.tableFrame}>
-        <Table<RowData>
-          rowKey="id"
-          loading={loading}
-          columns={tableColumns}
-          dataSource={rows}
-          sticky
-          scroll={{ x: Math.max(900, config.columns.reduce((sum, column) => sum + (column.width || 120), 0) + 110) }}
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: false,
-            showTotal: (value) => t("共 {n} 条", { n: value }),
-            onChange: (nextPage) => setPage(nextPage),
-          }}
-          locale={{
-            emptyText: (
+      {supportsCards && view === "card" ? (
+        <section className={styles.cardGrid}>
+          {loading && !rows.length ? null : rows.length ? rows.map((record) => {
+            const location = [record.country, record.region].filter(Boolean).join(" / ");
+            const category = dictLabelOf(lookups.dicts?.customer_category, String(record.category || ""), locale);
+            const industry = dictLabelOf(lookups.dicts?.industry, String(record.industry || ""), locale);
+            const statusLabelText = config.filterOptions?.find((option) => option.value === record.status)?.label;
+            return (
+              <article key={record.id} className={styles.customerCard}>
+                <div className={styles.cardTop}>
+                  <div className={styles.cardTitleGroup}>
+                    <button type="button" className={styles.cardName} onClick={() => viewCustomer(record)}>
+                      {String(record.name || "-")}
+                    </button>
+                    {record.nameEn ? <div className={styles.cardNameEn}>{String(record.nameEn)}</div> : null}
+                  </div>
+                  <StatusTag value={String(record.status || "")} label={statusLabelText} />
+                </div>
+                <div className={styles.cardTags}>
+                  {category ? <Tag color="blue">{category}</Tag> : null}
+                  {industry ? <Tag>{industry}</Tag> : null}
+                </div>
+                <dl className={styles.cardMeta}>
+                  <div><dt>{t("国家 / 地区")}</dt><dd>{location || "-"}</dd></div>
+                  <div><dt>{t("负责人")}</dt><dd>{String(record.ownerName || "-")}</dd></div>
+                  <div><dt>{t("最近拜访")}</dt><dd>{String(record.latestVisitDate || "-")}</dd></div>
+                  <div><dt>{t("订单")}</dt><dd>{formatNumber(record.orderCount)}</dd></div>
+                </dl>
+                <div className={styles.cardAddress}>{String(record.address || "-")}</div>
+                <div className={styles.cardActions}>
+                  <Button size="small" icon={<EyeOutlined />} onClick={() => viewCustomer(record)}>{t("查看")}</Button>
+                  {canWrite && record.canEdit !== 0 ? (
+                    <Button size="small" icon={<EditOutlined />} onClick={() => void openEdit(record)}>{t("编辑")}</Button>
+                  ) : null}
+                  {canWrite && record.canEdit !== 0 ? (
+                    <Popconfirm
+                      title={t("确认删除「{name}」？", { name: recordLabel(record) })}
+                      okText={t("确认")}
+                      cancelText={t("取消")}
+                      onConfirm={() => void remove(record)}
+                    >
+                      <Button size="small" danger icon={<DeleteOutlined />} aria-label={t("删除")} />
+                    </Popconfirm>
+                  ) : null}
+                </div>
+              </article>
+            );
+          }) : (
+            <div className={styles.cardEmpty}>
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无数据")}>
                 {canWrite ? <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{config.createLabel}</Button> : null}
               </Empty>
-            ),
-          }}
-        />
-      </section>
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className={styles.tableFrame}>
+          <Table<RowData>
+            rowKey="id"
+            loading={loading}
+            columns={tableColumns}
+            dataSource={rows}
+            sticky
+            scroll={{ x: Math.max(900, config.columns.reduce((sum, column) => sum + (column.width || 120), 0) + 110) }}
+            pagination={{
+              current: page,
+              pageSize,
+              total,
+              showSizeChanger: false,
+              showTotal: (value) => t("共 {n} 条", { n: value }),
+              onChange: (nextPage) => setPage(nextPage),
+            }}
+            locale={{
+              emptyText: (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无数据")}>
+                  {canWrite ? <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{config.createLabel}</Button> : null}
+                </Empty>
+              ),
+            }}
+          />
+        </section>
+      )}
+      {/* 卡片视图的分页要自己出，Table 自带的那套用不上 */}
+      {supportsCards && view === "card" && total > pageSize ? (
+        <div className={styles.cardPagination}>
+          <Pagination
+            current={page}
+            pageSize={pageSize}
+            total={total}
+            showSizeChanger={false}
+            showTotal={(value) => t("共 {n} 条", { n: value })}
+            onChange={(nextPage) => setPage(nextPage)}
+          />
+        </div>
+      ) : null}
       <Modal
         title={editing ? config.editLabel : config.createLabel}
         open={modalOpen}
@@ -737,15 +668,6 @@ export function ResourcePage({ resource, initialFilter, initialArriving }: { res
           <div className={styles.formGrid}>{visibleFields.map(renderField)}</div>
         </Form>
       </Modal>
-      {resource === "visits" ? (
-        <VisitDetail
-          open={Boolean(visitDetail)}
-          data={visitDetail}
-          canEdit={canWrite && visitDetail?.canEdit !== 0}
-          onClose={() => setVisitDetail(null)}
-          onEdit={(record) => { setVisitDetail(null); void openEdit(record as RowData); }}
-        />
-      ) : null}
     </div>
   );
 }

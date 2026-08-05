@@ -1,16 +1,7 @@
-import { ResourcePage } from "@/components/resource-page";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "订单 / 出货 / 到港" };
-
-const ORDER_STATUSES = ["planned", "confirmed", "shipped", "arrived", "cancelled"];
-
-// 支持从工作台统计卡带筛选下钻，如 /orders?status=confirmed、/orders?arriving=soon
-export default async function OrdersPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
-}) {
-  const { status, arriving } = await searchParams;
-  const initialFilter = typeof status === "string" && ORDER_STATUSES.includes(status) ? status : undefined;
-  return <ResourcePage resource="orders" initialFilter={initialFilter} initialArriving={arriving === "soon"} />;
+// 订单已并入客户档案页（订单天然绑定客户），不再有独立列表。
+// 保留这条路由做重定向，避免旧书签和历史链接落到 404。
+export default function OrdersPage() {
+  redirect("/customers");
 }

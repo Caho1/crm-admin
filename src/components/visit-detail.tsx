@@ -1,6 +1,6 @@
 "use client";
 
-import { EditOutlined } from "@ant-design/icons";
+import { EditOutlined, PaperClipOutlined } from "@ant-design/icons";
 import { Button, Descriptions, Drawer } from "antd";
 import { useLocale } from "./providers";
 import { StatusTag } from "./status-tag";
@@ -52,6 +52,13 @@ export function VisitDetail({
             <Descriptions.Item label={t("我方参加人员")}>{text(data, "internalParticipants")}</Descriptions.Item>
             <Descriptions.Item label={t("客户方参加人员")}>{text(data, "customerParticipants")}</Descriptions.Item>
             <Descriptions.Item label={t("创建人")}>{text(data, "creatorName")}</Descriptions.Item>
+            <Descriptions.Item label={t("拜访记录文件")}>
+              {data.attachmentName ? (
+                <a href={`/api/visits/${data.id}/attachment`} download>
+                  <PaperClipOutlined /> {text(data, "attachmentName")}
+                </a>
+              ) : "-"}
+            </Descriptions.Item>
           </Descriptions>
           <h3 className={styles.detailSectionTitle}>{t("客户公司简介")}</h3>
           <p className={styles.preWrap}>{text(data, "companyProfile")}</p>

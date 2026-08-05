@@ -10,10 +10,14 @@ export async function GET(_request: Request, context: Context) {
   try {
     const user = await requireApiUser();
     const id = integerId((await context.params).id);
-    assertCustomerAccess(user, id, "view");
+    const access = assertCustomerAccess(user, id, "view");
+    // 详情页据此决定是否显示拜访的新建 / 编辑 / 删除按钮
+    // （仅管理员、负责人、可编辑协作成员）
+    const canEdit = user.role === "admin" || access.ownerId === user.id || access.memberAccess === "edit";
     const db = getDb();
     const customer = db.prepare(`
-      SELECT c.id, c.name, c.country, c.region, c.industry, c.address, c.description,
+      SELECT c.id, c.name, c.name_en AS nameEn, c.category, c.country, c.region,
+        c.industry, c.address, c.description,
         c.owner_id AS ownerId, owner.name AS ownerName, c.status,
         c.created_at AS createdAt, c.updated_at AS updatedAt
       FROM customers c JOIN users owner ON owner.id = c.owner_id
@@ -25,32 +29,8 @@ export async function GET(_request: Request, context: Context) {
       SELECT u.id, u.name, cm.access FROM customer_members cm
       JOIN users u ON u.id = cm.user_id WHERE cm.customer_id = ? ORDER BY u.name
     `).all(id);
-    const visits = db.prepare(`
-      SELECT id, report_no AS reportNo, title, visit_date AS visitDate, status
-      FROM visits WHERE customer_id = ? AND deleted_at IS NULL ORDER BY visit_date DESC LIMIT 20
-    `).all(id);
-    const opportunities = db.prepare(`
-      SELECT o.id, o.name, o.stage, o.estimated_amount AS estimatedAmount, o.currency,
-        p.class_name AS className, p.grade, o.next_follow_up_date AS nextFollowUpDate
-      FROM opportunities o LEFT JOIN products p ON p.id = o.product_id
-      WHERE o.customer_id = ? AND o.deleted_at IS NULL ORDER BY o.updated_at DESC LIMIT 20
-    `).all(id);
-    const orders = db.prepare(`
-      SELECT ord.id, ord.order_no AS orderNo, ord.order_date AS orderDate, ord.quantity,
-        ord.price, ord.quantity * ord.price AS amount, ord.currency, ord.status, p.class_name AS className, p.grade,
-        ord.actual_shipment_date AS actualShipmentDate,
-        ord.expected_arrival_date AS expectedArrivalDate
-      FROM orders ord JOIN products p ON p.id = ord.product_id
-      WHERE ord.customer_id = ? AND ord.deleted_at IS NULL ORDER BY ord.order_date DESC LIMIT 20
-    `).all(id);
-    // 页签数量展示真实总数（列表本身最多返回 20 条）
-    const countOf = (sql: string) => (db.prepare(sql).get(id) as { count: number }).count;
-    const counts = {
-      visits: countOf("SELECT COUNT(*) AS count FROM visits WHERE customer_id = ? AND deleted_at IS NULL"),
-      opportunities: countOf("SELECT COUNT(*) AS count FROM opportunities WHERE customer_id = ? AND deleted_at IS NULL"),
-      orders: countOf("SELECT COUNT(*) AS count FROM orders WHERE customer_id = ? AND deleted_at IS NULL"),
-    };
-    return ok({ customer, contacts, members, visits, opportunities, orders, counts });
+    // 拜访列表由客户页内的 CustomerVisits 自行分页拉取（/api/visits?customerId=），此处不再内联
+    return ok({ customer, contacts, members, canEdit });
   } catch (error) {
     return handleApiError(error);
   }
@@ -71,9 +51,10 @@ export async function PUT(request: Request, context: Context) {
     const ownerId = user.role === "admin" && input.ownerId ? input.ownerId : current.ownerId;
     db.transaction(() => {
       db.prepare(`
-        UPDATE customers SET name = ?, country = ?, region = ?, industry = ?, address = ?,
-          description = ?, owner_id = ?, status = ?, updated_at = datetime('now') WHERE id = ?
-      `).run(input.name, input.country, input.region, input.industry, input.address, input.description, ownerId, input.status, id);
+        UPDATE customers SET name = ?, name_en = ?, category = ?, country = ?, region = ?,
+          industry = ?, address = ?, description = ?, owner_id = ?, status = ?,
+          updated_at = datetime('now') WHERE id = ?
+      `).run(input.name, input.nameEn, input.category, input.country, input.region, input.industry, input.address, input.description, ownerId, input.status, id);
       if (user.role === "admin") {
         // 保留已有成员的 access 等级，避免 edit 权限被重置成 view
         const existing = db.prepare("SELECT user_id AS userId, access FROM customer_members WHERE customer_id = ?").all(id) as Array<{ userId: number; access: string }>;

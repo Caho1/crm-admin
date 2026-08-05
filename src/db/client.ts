@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { schemaSql } from "./schema";
+import { columnMigrations, postMigrationSql, schemaSql } from "./schema";
 
 const globalForDb = globalThis as unknown as { crmDb?: Database.Database };
 
@@ -20,7 +20,18 @@ function openDatabase() {
   connection.pragma("foreign_keys = ON");
   connection.pragma("busy_timeout = 5000");
   connection.exec(schemaSql);
+  applyColumnMigrations(connection);
+  connection.exec(postMigrationSql);
   return connection;
+}
+
+function applyColumnMigrations(connection: Database.Database) {
+  for (const migration of columnMigrations) {
+    const columns = connection.prepare(`PRAGMA table_info(${migration.table})`).all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === migration.column)) {
+      connection.exec(migration.ddl);
+    }
+  }
 }
 
 export function getDb() {

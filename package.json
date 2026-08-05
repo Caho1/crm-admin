@@ -2,12 +2,15 @@
   "name": "sales-crm-admin",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "npm run db:setup && next dev -p 8003",
     "build": "npm run db:setup && next build",
     "start": "next start",
     "lint": "eslint",
-    "db:setup": "tsx scripts/setup-db.ts"
+    "db:setup": "tsx scripts/setup-db.ts",
+    "electron": "electron .",
+    "electron:rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
@@ -28,6 +31,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^43.3.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "postcss": "^8.5.17",

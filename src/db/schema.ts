@@ -19,9 +19,27 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- 可配置标签字典：分类、行业、产品大类等下拉选项统一在「设置 → 标签配置」维护，
+-- 业务表只存 code，展示时按当前语言取 label / label_en / label_ko。
+CREATE TABLE IF NOT EXISTS dict_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  code TEXT NOT NULL,
+  label TEXT NOT NULL,
+  label_en TEXT NOT NULL DEFAULT '',
+  label_ko TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL CHECK (status IN ('active', 'inactive')) DEFAULT 'active',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(type, code)
+);
+
 CREATE TABLE IF NOT EXISTS customers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  name_en TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT '',
   country TEXT NOT NULL DEFAULT '',
   region TEXT NOT NULL DEFAULT '',
   industry TEXT NOT NULL DEFAULT '',
@@ -80,6 +98,8 @@ CREATE TABLE IF NOT EXISTS visits (
   meeting_notes TEXT NOT NULL DEFAULT '',
   follow_up TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL CHECK (status IN ('draft', 'completed', 'archived')) DEFAULT 'draft',
+  attachment_name TEXT NOT NULL DEFAULT '',
+  attachment_data BLOB,
   created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -158,4 +178,19 @@ CREATE INDEX IF NOT EXISTS idx_orders_customer_date ON orders(customer_id, order
 CREATE INDEX IF NOT EXISTS idx_orders_shipment ON orders(actual_shipment_date, expected_arrival_date, status);
 CREATE INDEX IF NOT EXISTS idx_products_grade ON products(grade, class_name);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dict_items_type ON dict_items(type, status, sort_order);
+`;
+
+// 已存在的库不会重跑 CREATE TABLE，新增列必须走 ALTER TABLE。
+// 每次开库时检查一遍，缺什么补什么（幂等，重复启动无副作用）。
+export const columnMigrations: Array<{ table: string; column: string; ddl: string }> = [
+  { table: "customers", column: "name_en", ddl: "ALTER TABLE customers ADD COLUMN name_en TEXT NOT NULL DEFAULT ''" },
+  { table: "customers", column: "category", ddl: "ALTER TABLE customers ADD COLUMN category TEXT NOT NULL DEFAULT ''" },
+  { table: "visits", column: "attachment_name", ddl: "ALTER TABLE visits ADD COLUMN attachment_name TEXT NOT NULL DEFAULT ''" },
+  { table: "visits", column: "attachment_data", ddl: "ALTER TABLE visits ADD COLUMN attachment_data BLOB" },
+];
+
+// 依赖新增列的索引，必须等 columnMigrations 补完列之后再建
+export const postMigrationSql = `
+CREATE INDEX IF NOT EXISTS idx_customers_category ON customers(category, deleted_at);
 `;

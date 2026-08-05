@@ -52,9 +52,12 @@ export async function GET(request: Request) {
     const granularity: TrendGranularity = raw === "year" || raw === "week" ? raw : "month";
 
     const { keys, rangeStart } = buildBuckets(granularity);
+    // 单数与金额一次查出，工作台的「订单趋势」与「金额趋势」共用这份数据。
+    // 已取消的订单不计入金额，否则趋势会被废单抬高。
     const rows = db
       .prepare(`
-        SELECT ${BUCKET_EXPRS[granularity]} AS bucket, COUNT(*) AS count
+        SELECT ${BUCKET_EXPRS[granularity]} AS bucket, COUNT(*) AS count,
+          COALESCE(SUM(CASE WHEN ord.status <> 'cancelled' THEN ord.quantity * ord.price END), 0) AS amount
         FROM orders ord
         JOIN customers c ON c.id = ord.customer_id
         WHERE ord.deleted_at IS NULL
@@ -62,12 +65,16 @@ export async function GET(request: Request) {
           AND ${scope.sql}
         GROUP BY bucket
       `)
-      .all(rangeStart, ...scope.params) as Array<{ bucket: string; count: number }>;
+      .all(rangeStart, ...scope.params) as Array<{ bucket: string; count: number; amount: number }>;
 
-    const trend = keys.map((bucket) => ({
-      bucket,
-      count: rows.find((row) => row.bucket === bucket)?.count ?? 0,
-    }));
+    const trend = keys.map((bucket) => {
+      const row = rows.find((item) => item.bucket === bucket);
+      return {
+        bucket,
+        count: row?.count ?? 0,
+        amount: Math.round(row?.amount ?? 0),
+      };
+    });
 
     return ok({ granularity, trend });
   } catch (error) {

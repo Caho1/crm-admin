@@ -34,7 +34,12 @@ export async function GET(request: Request) {
       ${where}
       ORDER BY ord.order_date DESC, ord.id DESC LIMIT ? OFFSET ?
     `).all(...edit.params, ...params, pageSize, offset);
-    return ok(rows, { page, pageSize, total });
+    // 履约概要按当前筛选口径统计全量，不受分页影响
+    const statusRows = db
+      .prepare(`SELECT ord.status AS status, COUNT(*) AS count ${joins} ${where} GROUP BY ord.status`)
+      .all(...params) as Array<{ status: string; count: number }>;
+    const statusCounts = Object.fromEntries(statusRows.map((row) => [row.status, row.count]));
+    return ok(rows, { page, pageSize, total, statusCounts });
   } catch (error) {
     return handleApiError(error);
   }

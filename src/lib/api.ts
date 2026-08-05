@@ -14,7 +14,8 @@ export class ApiError extends Error {
   }
 }
 
-export function ok<T>(data: T, meta?: PaginationMeta) {
+// meta 允许在分页字段之外附带列表级的汇总（如订单的履约状态计数）
+export function ok<T, M extends PaginationMeta = PaginationMeta>(data: T, meta?: M) {
   return NextResponse.json(meta ? { data, meta } : { data });
 }
 

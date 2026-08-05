@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DICT_TYPE_VALUES } from "./dicts";
 
 const optionalText = (max = 1000) => z.string().trim().max(max, `不能超过 ${max} 个字符`).optional().default("");
 const optionalDate = z
@@ -16,8 +17,23 @@ export const loginSchema = z.object({
   password: z.string().min(1, "请输入密码").max(200),
 });
 
+// 标签字典项：code 是业务表实际存的值，建后不允许改，避免历史数据对不上
+export const dictItemSchema = z.object({
+  type: z.enum(DICT_TYPE_VALUES),
+  code: z.string().trim().min(1, "请输入选项值").max(60).regex(/^[^\s]+$/, "选项值不能包含空格"),
+  label: z.string().trim().min(1, "请输入中文名称").max(80),
+  labelEn: optionalText(80),
+  labelKo: optionalText(80),
+  sortOrder: z.coerce.number().int().min(0).max(9999).optional().default(0),
+  status: z.enum(["active", "inactive"]).default("active"),
+});
+
+export const dictItemUpdateSchema = dictItemSchema.omit({ type: true, code: true });
+
 export const customerSchema = z.object({
   name: z.string().trim().min(2, "客户名称至少 2 个字符").max(160),
+  nameEn: optionalText(160),
+  category: optionalText(60),
   country: optionalText(80),
   region: optionalText(80),
   industry: optionalText(120),
@@ -32,17 +48,18 @@ export const customerSchema = z.object({
   contactEmail: z.union([z.string().trim().email("邮箱格式不正确"), z.literal("")]).optional().default(""),
 });
 
-// 对齐旧系统公文的星号必填项：时间、我方/客户方参加人员、公司简介、会谈纪要、后续跟进
+// 拜访记录从简：标题和日期必填即可，参加人员、纪要等都是可选补充；
+// 正式的长报告可以用 docx 附件上传，不再强迫逐段填写
 export const visitSchema = z.object({
   reportNo: z.string().trim().max(80).optional().default(""),
   title: z.string().trim().min(3, "请输入报告标题").max(240),
   customerId: positiveId,
   visitDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "请选择拜访日期"),
-  internalParticipants: z.string().trim().min(1, "请输入我方参加人员").max(300, "不能超过 300 个字符"),
-  customerParticipants: z.string().trim().min(1, "请输入客户方参加人员").max(300, "不能超过 300 个字符"),
-  companyProfile: z.string().trim().min(1, "请输入客户公司简介").max(3000, "不能超过 3000 个字符"),
-  meetingNotes: z.string().trim().min(2, "请输入沟通纪要").max(8000, "不能超过 8000 个字符"),
-  followUp: z.string().trim().min(1, "请输入后续跟进事项").max(3000, "不能超过 3000 个字符"),
+  internalParticipants: optionalText(300),
+  customerParticipants: optionalText(300),
+  companyProfile: optionalText(3000),
+  meetingNotes: optionalText(8000),
+  followUp: optionalText(3000),
   status: z.enum(["draft", "completed", "archived"]).default("draft"),
   productIds: z.array(positiveId).optional().default([]),
 });

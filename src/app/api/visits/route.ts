@@ -44,6 +44,7 @@ export async function GET(request: Request) {
         v.customer_participants AS customerParticipants,
         v.company_profile AS companyProfile, v.meeting_notes AS meetingNotes,
         v.follow_up AS followUp, v.status, v.created_by AS createdBy,
+        v.attachment_name AS attachmentName,
         creator.name AS creatorName, v.created_at AS createdAt, v.updated_at AS updatedAt,
         (SELECT GROUP_CONCAT(p.class_name || ' / ' || p.grade, '、')
          FROM visit_products vp JOIN products p ON p.id = vp.product_id

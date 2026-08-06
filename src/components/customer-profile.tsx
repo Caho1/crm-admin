@@ -1,7 +1,7 @@
 "use client";
 
-import { ArrowLeftOutlined } from "@ant-design/icons";
-import { Descriptions, Empty, Skeleton, Tabs, Tag } from "antd";
+import { ArrowLeftOutlined, EditOutlined } from "@ant-design/icons";
+import { Button, Descriptions, Empty, Skeleton, Tabs, Tag } from "antd";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
@@ -94,6 +94,14 @@ export function CustomerProfile({ id }: { id: number }) {
           {location ? <span><b>{t("国家 / 地区")}</b> {location}</span> : null}
           {industryLabel ? <span><b>{t("行业")}</b> {industryLabel}</span> : null}
         </div>
+        {/* 详情页主操作：有编辑权限时提供入口，跳回列表页并自动打开编辑弹窗 */}
+        {data.canEdit !== false ? (
+          <div className={styles.headerActions}>
+            <Link href={`/customers?edit=${id}`}>
+              <Button type="primary" icon={<EditOutlined />}>{t("编辑客户")}</Button>
+            </Link>
+          </div>
+        ) : null}
       </div>
 
       <div className={styles.grid}>

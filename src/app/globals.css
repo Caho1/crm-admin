@@ -62,11 +62,11 @@ a {
 
 .ant-modal .ant-modal-content,
 .ant-drawer .ant-drawer-content {
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .ant-card {
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 @media (max-width: 720px) {

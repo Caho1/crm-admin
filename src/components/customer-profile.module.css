@@ -42,6 +42,14 @@
   letter-spacing: -0.01em;
 }
 
+/* 页头右侧主操作：编辑客户等入口 */
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
 /* 英文名紧跟中文名下方，弱化字重避免和主标题抢焦点 */
 .nameEn {
   flex-basis: 100%;

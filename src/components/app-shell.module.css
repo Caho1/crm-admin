@@ -74,6 +74,17 @@
   background: transparent;
 }
 
+/* 选中项：软底 + 主色 + 加粗，替代 antd 默认底部细线，弱化 hover 的浅灰底 */
+.topMenu :global(.ant-menu-item-selected) {
+  color: #1769aa;
+  font-weight: 600;
+  background: #eaf3fb;
+}
+
+.topMenu :global(.ant-menu-item-selected::after) {
+  display: none;
+}
+
 .mobileMenuButton {
   display: none !important;
 }

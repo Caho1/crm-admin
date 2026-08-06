@@ -343,6 +343,19 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
     setModalOpen(true);
   };
 
+  // 客户详情页的「编辑客户」跳 /customers?edit=<id>，挂载后直接打开对应编辑弹窗；
+  // openEdit 对 customers 会按 id 拉详情，无需行数据
+  const editHandled = useRef(false);
+  useEffect(() => {
+    if (editHandled.current || typeof window === "undefined") return;
+    const editId = new URLSearchParams(window.location.search).get("edit");
+    if (!editId) return;
+    editHandled.current = true;
+    // 清掉 edit= 参数，避免刷新页面时再次弹出编辑框
+    window.history.replaceState(null, "", window.location.pathname);
+    void openEdit({ id: Number(editId) } as RowData);
+  }, [openEdit]);
+
   // 客户详情改为独立子页，点击客户名 / 查看均跳转 /customers/[id]
   const viewCustomer = (record: RowData) => {
     router.push(`/customers/${record.id}`);

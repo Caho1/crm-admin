@@ -61,11 +61,82 @@
   font-weight: 700;
 }
 
-.quickActions {
+/* 行动区：待出货/到港 + 最近拜访，销售的第一屏信息 */
+.actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.actionList {
+  margin: 0;
+  padding: 4px 12px 12px;
+  list-style: none;
+}
+
+.actionList li + li {
+  border-top: 1px solid var(--border);
+}
+
+.actionRow {
   display: flex;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 6px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.actionRow:hover {
+  background: #f6f9fc;
+}
+
+.actionMain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
+}
+
+.actionTitle {
+  min-width: 0;
+  overflow: hidden;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actionSub {
+  min-width: 0;
+  overflow: hidden;
+  color: #667085;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actionMeta {
+  color: #98a2b3;
+  font-size: 12px;
+}
+
+/* 行动区面板标题右侧的跳转链接 */
+.panelMore {
+  font-size: 13px;
+}
+
+.actionEmpty {
+  padding: 8px 0;
+}
+
+@media (max-width: 860px) {
+  .actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .panels {

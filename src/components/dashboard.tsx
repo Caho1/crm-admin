@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { useLocale } from "./providers";
+import { StatusTag } from "./status-tag";
 import { AmountArea, GradeBar, ProductClassPie, TrendArea } from "./mini-charts";
 import styles from "./dashboard.module.css";
 
@@ -118,6 +119,8 @@ export function Dashboard() {
       <div className={styles.pageHeader}>
         <div className={styles.pageHeaderRight}>
           <span className={styles.date}>{dayjs().format(t("YYYY年M月D日 dddd"))}</span>
+          {/* 主按钮保持一个（新建客户），新建订单做旁路，避免两个 primary 抢焦点 */}
+          <Button icon={<PlusOutlined />} onClick={() => router.push("/orders")}>{t("新建订单")}</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => router.push("/customers?create=1")}>{t("新建客户")}</Button>
         </div>
       </div>
@@ -144,6 +147,62 @@ export function Dashboard() {
                 <div key={item.label}>{card}</div>
               );
             })}
+          </div>
+          {/* 行动区：销售打开系统先看「今天该干什么」，图表退到下方 */}
+          <div className={styles.actions}>
+            <section className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <h2 className={styles.panelTitle}>{t("待出货 / 即将到港")}</h2>
+                <Link className={styles.panelMore} href="/orders">{t("全部订单")}</Link>
+              </div>
+              {data.shipmentAlerts.length ? (
+                <ul className={styles.actionList}>
+                  {data.shipmentAlerts.map((item) => (
+                    <li key={String(item.orderNo)}>
+                      <Link className={styles.actionRow} href="/orders">
+                        <span className={styles.actionMain}>
+                          <span className={styles.actionTitle}>{String(item.orderNo)}</span>
+                          <StatusTag value={String(item.status)} />
+                        </span>
+                        <span className={styles.actionSub}>
+                          {String(item.customerName)} · {String(item.className)} / {String(item.grade)}
+                        </span>
+                        <span className={styles.actionMeta}>
+                          {item.expectedArrivalDate
+                            ? `${t("预计到港")} ${String(item.expectedArrivalDate)}`
+                            : t("船期待定")}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className={styles.actionEmpty}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无在途订单")} /></div>
+              )}
+            </section>
+            <section className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <h2 className={styles.panelTitle}>{t("最近拜访")}</h2>
+              </div>
+              {data.recentVisits.length ? (
+                <ul className={styles.actionList}>
+                  {data.recentVisits.map((item) => (
+                    <li key={String(item.id)}>
+                      <Link className={styles.actionRow} href={`/customers/${item.customerId}`}>
+                        <span className={styles.actionMain}>
+                          <span className={styles.actionTitle}>{String(item.title)}</span>
+                          <StatusTag value={String(item.status)} />
+                        </span>
+                        <span className={styles.actionSub}>{String(item.customerName)}</span>
+                        <span className={styles.actionMeta}>{String(item.visitDate)}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className={styles.actionEmpty}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无拜访记录")} /></div>
+              )}
+            </section>
           </div>
           <div className={styles.charts}>
             <section className={styles.panel}>

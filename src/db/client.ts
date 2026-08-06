@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { columnMigrations, postMigrationSql, schemaSql } from "./schema";
+import { seedDatabase } from "./seed";
 
 const globalForDb = globalThis as unknown as { crmDb?: Database.Database };
 
@@ -22,6 +23,11 @@ function openDatabase() {
   connection.exec(schemaSql);
   applyColumnMigrations(connection);
   connection.exec(postMigrationSql);
+  // 全新安装的库没有任何用户，播种默认账号与演示数据（幂等，老库不受影响）
+  const userCount = connection.prepare("SELECT COUNT(*) AS count FROM users").get() as { count: number };
+  if (userCount.count === 0) {
+    seedDatabase(connection);
+  }
   return connection;
 }
 

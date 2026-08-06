@@ -1,0 +1,55 @@
+# Electron 打包配置
+# 产物目录：release/
+appId: com.crm.admin
+productName: CRM-Admin
+directories:
+  output: release
+
+# 主进程只依赖 Electron 内置模块，无需打包 node_modules；
+# 服务端依赖已由 Next standalone 自包含，通过 extraResources 注入 resources/
+files:
+  - electron/**
+  - package.json
+  - "!node_modules/**"
+
+# Next standalone 服务：由主进程从 resources/standalone/server.js 拉起
+extraResources:
+  - from: .next/standalone
+    to: standalone
+    filter:
+      - "**/*"
+  # 根 node_modules 被 electron-builder 硬排除（见 app-builder-lib filter.js），
+  # 只能单独作为 from 根拷贝
+  - from: .next/standalone/node_modules
+    to: standalone/node_modules
+    filter:
+      - "**/*"
+  # 静态资源：Next standalone 输出不包含 .next/static 与 public，需手动补齐
+  - from: .next/static
+    to: standalone/.next/static
+    filter:
+      - "**/*"
+  - from: public
+    to: standalone/public
+    filter:
+      - "**/*"
+
+# better-sqlite3 由构建流程里的 electron-rebuild 针对 Electron ABI 重建，
+# 关闭 electron-builder 自带的 npmRebuild，避免重复编译
+npmRebuild: false
+
+mac:
+  # 无开发者证书，跳过签名（应用分发前需补签名与公证）
+  identity: null
+  target:
+    - dmg
+    - zip
+  category: public.app-category.business
+
+win:
+  target:
+    - nsis
+
+linux:
+  target:
+    - AppImage

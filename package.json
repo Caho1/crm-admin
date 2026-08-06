@@ -1,5 +1,6 @@
 {
   "name": "sales-crm-admin",
+  "productName": "CRM-Admin",
   "version": "0.1.0",
   "private": true,
   "main": "electron/main.js",
@@ -10,7 +11,9 @@
     "lint": "eslint",
     "db:setup": "tsx scripts/setup-db.ts",
     "electron": "electron .",
-    "electron:rebuild": "electron-rebuild -f -w better-sqlite3"
+    "electron:rebuild": "electron-rebuild -f -w better-sqlite3",
+    "electron:pack": "npm run build && electron-rebuild -f -w better-sqlite3 && node scripts/copy-sqlite-build.mjs && electron-builder && rm -rf node_modules/better-sqlite3/build && npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 ABI OK for dev')\"",
+    "electron:pack:dir": "npm run build && electron-rebuild -f -w better-sqlite3 && node scripts/copy-sqlite-build.mjs && electron-builder --dir && rm -rf node_modules/better-sqlite3/build && npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 ABI OK for dev')\""
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
@@ -27,11 +30,13 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "postcss": "^8.5.17",

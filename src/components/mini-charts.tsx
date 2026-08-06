@@ -21,8 +21,8 @@ const Pie = dynamic(() => import("@ant-design/plots").then((mod) => mod.Pie), {
 });
 
 const BRAND = "#1769aa";
-// 桌面端窗口高度有限，工作台要一屏放下四张图，图表压到 170px
-const CHART_HEIGHT = 170;
+// 工作台图表统一高度，调整时同步 dashboard.module.css 的 .chartLoading
+const CHART_HEIGHT = 220;
 // 分类色板：产品大类/牌号分布用，顺序固定保证同一分类每次颜色一致
 const PALETTE = ["#1769aa", "#2f855a", "#b7791f", "#7c4d9e", "#b45309", "#0e7490", "#be123c", "#4d7c0f"];
 

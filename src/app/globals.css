@@ -21,7 +21,9 @@ body {
   min-height: 100%;
   margin: 0;
   padding: 0;
-  overflow-x: hidden;
+  /* 用 clip 而不是 hidden：hidden 会让 html/body 变成滚动容器，
+     顶栏的 position: sticky 就会失效（滚动时跟着内容一起走） */
+  overflow-x: clip;
 }
 
 body {
@@ -47,10 +49,25 @@ a {
   text-decoration: none;
 }
 
+/* 所有表格统一：表头文字居中，正文单元格保持各自的对齐（金额 / 数量仍右对齐）。
+   column.align 会给右对齐列的表头挂行内 style，这里必须 !important 才能盖过 */
 .ant-table-wrapper .ant-table-thead > tr > th {
   color: #475467;
   font-weight: 600;
   background: #f8fafc;
+  text-align: center !important;
+}
+
+/* 固定列的表头由内层容器排版，单独居中一次 */
+.ant-table-wrapper .ant-table-thead > tr > th .ant-table-column-sorters,
+.ant-table-wrapper .ant-table-thead > tr > th .ant-table-filter-column {
+  justify-content: center;
+}
+
+/* 正文单元格跟着表头一起居中，整列上下对齐成一条；
+   金额 / 数量列由 column.align 挂的行内 right 同样需要 !important 覆盖 */
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  text-align: center !important;
 }
 
 .ant-table-wrapper .ant-table-cell {

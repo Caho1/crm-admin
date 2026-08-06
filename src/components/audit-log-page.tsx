@@ -14,6 +14,7 @@ type AuditRow = {
   action: string;
   entityType: string;
   entityId: number | null;
+  entityName: string | null;
   summary: string;
   createdAt: string;
 };
@@ -26,6 +27,7 @@ const entityLabels: Record<string, string> = {
   product: "产品",
   order: "订单",
   user: "用户",
+  dict_item: "标签",
   session: "会话",
 };
 
@@ -76,12 +78,25 @@ export function AuditLogPage() {
     return () => clearTimeout(timer);
   }, [searchInput, query]);
 
+  // 时间放最后：先看谁做了什么，再看什么时候
   const columns: TableProps<AuditRow>["columns"] = [
-    { title: t("时间"), dataIndex: "createdAt", width: 170 },
-    { title: t("操作人"), dataIndex: "userName", width: 120, render: (value) => value || t("系统") },
-    { title: t("动作"), dataIndex: "action", width: 105, render: (value) => <StatusTag value={value} /> },
-    { title: t("对象"), key: "entity", width: 150, render: (_, row) => `${t(entityLabels[row.entityType] || row.entityType)}${row.entityId ? ` #${row.entityId}` : ""}` },
+    { title: t("操作人"), dataIndex: "userName", width: 110, render: (value) => value || t("系统") },
+    { title: t("动作"), dataIndex: "action", width: 100, render: (value) => <StatusTag value={value} /> },
+    {
+      title: t("对象"),
+      key: "entity",
+      width: 210,
+      ellipsis: true,
+      render: (_, row) => {
+        const type = t(entityLabels[row.entityType] || row.entityType);
+        // 记录已删除时取不到名称，退回 #id 至少还能对上审计编号
+        if (row.entityName) return <span>{type} · <strong>{row.entityName}</strong></span>;
+        return <span className={styles.counts}>{type}{row.entityId ? ` #${row.entityId}` : ""}</span>;
+      },
+    },
     { title: t("操作内容"), dataIndex: "summary", ellipsis: true },
+    // 「2026-08-06 22:43:56」要能一行放下，不换行
+    { title: t("时间"), dataIndex: "createdAt", width: 210, render: (value) => <span className={styles.nowrap}>{value}</span> },
   ];
 
   return (
@@ -89,7 +104,7 @@ export function AuditLogPage() {
       <div className={styles.header}><div className={styles.titleGroup}><h1 className={styles.title}>{t("操作日志")}</h1><span className={styles.total}>{t("{n} 条", { n: total })}</span></div></div>
       <div className={styles.toolbar}>
         <Input.Search className={styles.search} allowClear value={searchInput} placeholder={t("操作人、对象或内容")} onChange={(event) => setSearchInput(event.target.value)} onSearch={(value) => { setQuery(value.trim()); setPage(1); }} />
-        <Select className={styles.filter} allowClear placeholder={t("全部动作")} value={action} options={["create", "update", "delete", "disable", "import", "handover", "reset_password", "login", "logout"].map((value) => ({ value, label: t(statusLabel(value)) }))} onChange={(value) => { setAction(value); setPage(1); }} />
+        <Select className={styles.filter} allowClear placeholder={t("全部动作")} value={action} options={["create", "update", "delete", "enable", "disable", "import", "handover", "reset_password", "login", "logout"].map((value) => ({ value, label: t(statusLabel(value)) }))} onChange={(value) => { setAction(value); setPage(1); }} />
         <Tooltip title={t("刷新")}><Button icon={<ReloadOutlined />} onClick={() => void load()} /></Tooltip>
       </div>
       <section className={styles.tableFrame}>

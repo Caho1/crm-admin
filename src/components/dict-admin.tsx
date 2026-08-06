@@ -1,12 +1,11 @@
 "use client";
 
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Empty, Form, Input, InputNumber, Modal, Segmented, Select, Table, Tag, Tooltip, type TableProps } from "antd";
+import { Alert, App, Button, Empty, Form, Input, InputNumber, Modal, Segmented, Switch, Table, Tag, Tooltip, type TableProps } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { DICT_TYPES, type DictItem, type DictMap, type DictType } from "@/lib/dicts";
 import { useLocale } from "./providers";
-import { StatusTag } from "./status-tag";
 import styles from "./admin-pages.module.css";
 
 // 标签配置：客户分类、产品大类、行业等下拉选项在这里维护。
@@ -20,6 +19,7 @@ export function DictAdmin() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<DictItem | null>(null);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
 
@@ -53,18 +53,54 @@ export function DictAdmin() {
 
   const openEdit = (row: DictItem) => {
     setEditing(row);
-    setInitialValues({ code: row.code, label: row.label, labelEn: row.labelEn, labelKo: row.labelKo, sortOrder: row.sortOrder, status: row.status });
+    // 启停由列表里的开关直接控制，弹窗只管名称 / 选项值 / 排序
+    setInitialValues({ code: row.code, label: row.label, labelEn: row.labelEn, labelKo: row.labelKo, sortOrder: row.sortOrder });
     setModalOpen(true);
+  };
+
+  // 启停是可逆操作，开关点了就生效，不再弹确认框
+  const toggleStatus = async (row: DictItem, checked: boolean) => {
+    setTogglingId(row.id);
+    try {
+      const response = await apiFetch(`/api/dicts/${row.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: row.label,
+          labelEn: row.labelEn,
+          labelKo: row.labelKo,
+          sortOrder: row.sortOrder,
+          status: checked ? "active" : "inactive",
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message || "保存失败");
+      // 停用只影响新建时的下拉框，已经用了这个标签的历史数据照常显示
+      message.success(
+        checked
+          ? t("标签「{label}」已启用", { label: row.label })
+          : (row.usageCount ?? 0) > 0
+            ? t("标签「{label}」已停用，新建时不再出现；已有 {n} 条数据仍显示该标签", { label: row.label, n: row.usageCount ?? 0 })
+            : t("标签「{label}」已停用，新建时不再出现在下拉框中", { label: row.label }),
+      );
+      await load();
+    } catch (error) {
+      message.error(t(error instanceof Error ? error.message : "保存失败"));
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   const save = async () => {
     try {
       const values = await form.validateFields();
       setSaving(true);
+      // 状态不在表单里：编辑时沿用当前值，新增时默认启用
+      const payloadValues = { ...values, status: editing ? editing.status : "active" };
       const response = await apiFetch(editing ? `/api/dicts/${editing.id}` : "/api/dicts", {
         method: editing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editing ? values : { ...values, type }),
+        body: JSON.stringify(editing ? payloadValues : { ...payloadValues, type }),
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -112,9 +148,27 @@ export function DictAdmin() {
     { title: "English", dataIndex: "labelEn", width: 160, render: (value) => value || <span className={styles.counts}>-</span> },
     { title: "한국어", dataIndex: "labelKo", width: 140, render: (value) => value || <span className={styles.counts}>-</span> },
     { title: t("选项值"), dataIndex: "code", width: 130, render: (value) => <Tag>{value}</Tag> },
-    { title: t("排序"), dataIndex: "sortOrder", width: 70, align: "right" },
+    {
+      // 排序号只决定这一项在业务下拉框里的先后位置，和业务含义无关
+      title: <Tooltip title={t("数字越小越靠前，决定该选项在下拉框里的位置")}><span>{t("排序")}</span></Tooltip>,
+      dataIndex: "sortOrder",
+      width: 70,
+      align: "right",
+    },
     { title: t("引用"), dataIndex: "usageCount", width: 80, align: "right", render: (value) => <span className={styles.counts}>{t("{n} 条", { n: value ?? 0 })}</span> },
-    { title: t("状态"), dataIndex: "status", width: 90, render: (value) => <StatusTag value={String(value)} label={value === "active" ? "启用" : "停用"} /> },
+    {
+      title: t("启用"),
+      dataIndex: "status",
+      width: 80,
+      render: (value, row) => (
+        <Switch
+          size="small"
+          checked={value === "active"}
+          loading={togglingId === row.id}
+          onChange={(checked) => void toggleStatus(row, checked)}
+        />
+      ),
+    },
     {
       title: t("操作"),
       key: "actions",
@@ -194,11 +248,8 @@ export function DictAdmin() {
             </Form.Item>
             <Form.Item name="labelEn" label="English"><Input placeholder={t("留空则回退中文")} /></Form.Item>
             <Form.Item name="labelKo" label="한국어"><Input placeholder={t("留空则回退中文")} /></Form.Item>
-            <Form.Item name="sortOrder" label={t("排序")} tooltip={t("数字越小越靠前")}>
+            <Form.Item name="sortOrder" label={t("排序")} tooltip={t("数字越小越靠前，决定该选项在下拉框里的位置")}>
               <InputNumber style={{ width: "100%" }} min={0} max={9999} precision={0} />
-            </Form.Item>
-            <Form.Item name="status" label={t("状态")} rules={[{ required: true }]}>
-              <Select options={[{ label: t("启用"), value: "active" }, { label: t("停用"), value: "inactive" }]} />
             </Form.Item>
           </div>
         </Form>

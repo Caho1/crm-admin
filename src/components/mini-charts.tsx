@@ -28,6 +28,7 @@ const PALETTE = ["#1769aa", "#2f855a", "#b7791f", "#7c4d9e", "#b45309", "#0e7490
 
 const compact = new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 });
 const full = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
+const percent = new Intl.NumberFormat("zh-CN", { style: "percent", maximumFractionDigits: 1 });
 
 /** 面积图基底：订单数与订单金额共用，只是取值字段和格式化不同 */
 function TrendChart({
@@ -119,9 +120,20 @@ export function ProductClassPie({ data, emptyText, tooltipName }: { data: Distri
         colorField="name"
         height={CHART_HEIGHT}
         innerRadius={0.6}
-        radius={0.95}
+        radius={0.8}
         scale={{ color: { range: PALETTE } }}
-        label={false}
+        // 占比标注在扇区外侧，用引导线连回对应扇区；占比过小的扇区不标，避免线条打架
+        label={{
+          text: (d: DistributionDatum) => (d.amount / total >= 0.03 ? percent.format(d.amount / total) : ""),
+          position: "outside",
+          connector: true,
+          connectorStroke: "#c2cad6",
+          connectorLineWidth: 1,
+          connectorDistance: 6,
+          fill: "#475467",
+          fontSize: 12,
+          fontWeight: 500,
+        }}
         legend={{ color: { position: "right", rowPadding: 6, itemLabelFill: "#475467", itemLabelFontSize: 12 } }}
         tooltip={{
           title: (d: DistributionDatum) => d.name,

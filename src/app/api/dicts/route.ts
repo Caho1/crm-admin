@@ -64,7 +64,8 @@ export async function POST(request: Request) {
       `)
       .run(input.type, input.code, input.label, input.labelEn, input.labelKo, input.sortOrder, input.status);
     const id = Number(result.lastInsertRowid);
-    writeAudit(user.id, "create", "dict_item", id, `新建标签 ${input.type} / ${input.label}`);
+    const groupLabel = DICT_TYPES.find((item) => item.type === input.type)?.label || input.type;
+    writeAudit(user.id, "create", "dict_item", id, `新建标签 ${groupLabel} / ${input.label}`);
     return created({ id });
   } catch (error) {
     return handleApiError(error);

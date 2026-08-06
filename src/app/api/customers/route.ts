@@ -2,7 +2,7 @@ import { getDb } from "@/db/client";
 import { ApiError, created, handleApiError, ok, paginationFrom, parseBody, requireApiUser } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
 import { customerCanEdit, customerScope } from "@/lib/permissions";
-import { addCondition, searchLike, whereSql } from "@/lib/query";
+import { addCondition, searchLike, searchTerms, whereSql } from "@/lib/query";
 import { customerSchema } from "@/lib/validation";
 
 export async function GET(request: Request) {
@@ -14,20 +14,34 @@ export async function GET(request: Request) {
     const params: unknown[] = [];
     const scope = customerScope(user, "c");
     addCondition(conditions, params, scope.sql, ...scope.params);
-    if (searchParams.get("q")) {
-      const value = searchLike(searchParams.get("q"));
-      // 中英文名、地址、国家/地区、行业一并命中：输入「中山」能搜到地址在中山的客户，
-      // 输入英文名片段也能搜到（需求：模糊查找 / 按地域列出客户）
+    // 关键词按空格拆分，词与词之间是「并且」，每个词在下列字段里任意命中即可：
+    // 中英文名 / 地址 / 国家 / 地区 / 简介、负责人与协作成员姓名、联系人姓名电话邮箱、
+    // 以及分类和行业的标签文案（这两列存的是 code，要回字典表按标签反查）
+    for (const term of searchTerms(searchParams.get("q"))) {
+      const value = searchLike(term);
       addCondition(
         conditions,
         params,
-        "(c.name LIKE ? OR c.name_en LIKE ? OR c.address LIKE ? OR c.region LIKE ? OR c.country LIKE ? OR c.industry LIKE ?)",
-        value,
-        value,
-        value,
-        value,
-        value,
-        value,
+        `(
+          c.name LIKE ? OR c.name_en LIKE ? OR c.address LIKE ? OR c.country LIKE ?
+          OR c.region LIKE ? OR c.description LIKE ? OR c.industry LIKE ? OR c.category LIKE ?
+          OR EXISTS (SELECT 1 FROM users u WHERE u.id = c.owner_id AND u.name LIKE ?)
+          OR EXISTS (
+            SELECT 1 FROM customer_members cm JOIN users mu ON mu.id = cm.user_id
+            WHERE cm.customer_id = c.id AND mu.name LIKE ?
+          )
+          OR EXISTS (
+            SELECT 1 FROM contacts ct WHERE ct.customer_id = c.id
+              AND (ct.name LIKE ? OR ct.title LIKE ? OR ct.phone LIKE ? OR ct.email LIKE ?)
+          )
+          OR EXISTS (
+            SELECT 1 FROM dict_items d
+            WHERE d.type IN ('customer_category', 'industry')
+              AND d.code IN (c.category, c.industry)
+              AND (d.label LIKE ? OR d.label_en LIKE ? OR d.label_ko LIKE ?)
+          )
+        )`,
+        ...Array<string>(17).fill(value),
       );
     }
     if (searchParams.get("status")) {

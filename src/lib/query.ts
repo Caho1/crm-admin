@@ -18,6 +18,11 @@ export function searchLike(value: string | null) {
   return `%${(value || "").trim()}%`;
 }
 
+/** 搜索框按空格拆词，最多 5 个词，避免一长串输入拼出过大的 SQL */
+export function searchTerms(value: string | null) {
+  return (value || "").trim().split(/\s+/).filter(Boolean).slice(0, 5);
+}
+
 export function generatedCode(prefix: string) {
   // 业务统一按北京时间（UTC+8）取日期，避免依赖服务器时区
   const now = new Date(Date.now() + 8 * 60 * 60 * 1000);

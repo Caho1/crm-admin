@@ -22,9 +22,27 @@ export const orderExcelColumns = [
   { header: "Status", key: "status", width: 14 },
 ] as const;
 
-export function styleOrderSheet(worksheet: ExcelJS.Worksheet) {
+// 客户名单导入：只做客户档案本身 + 主要联系人，协作成员等关系仍在界面里维护
+export const customerExcelColumns = [
+  { header: "客户名称（中文）", key: "name", width: 28 },
+  { header: "客户名称（英文）", key: "nameEn", width: 30 },
+  { header: "客户分类", key: "category", width: 14 },
+  { header: "行业", key: "industry", width: 14 },
+  { header: "国家", key: "country", width: 12 },
+  { header: "地区", key: "region", width: 12 },
+  { header: "详细地址", key: "address", width: 30 },
+  { header: "客户简介", key: "description", width: 34 },
+  { header: "负责人", key: "ownerName", width: 12 },
+  { header: "客户状态", key: "status", width: 12 },
+  { header: "主要联系人", key: "contactName", width: 14 },
+  { header: "联系人职位", key: "contactTitle", width: 14 },
+  { header: "联系电话", key: "contactPhone", width: 18 },
+  { header: "联系邮箱", key: "contactEmail", width: 22 },
+] as const;
+
+function styleSheet(worksheet: ExcelJS.Worksheet, lastColumn: string) {
   worksheet.views = [{ state: "frozen", ySplit: 1 }];
-  worksheet.autoFilter = { from: "A1", to: "R1" };
+  worksheet.autoFilter = { from: "A1", to: `${lastColumn}1` };
   const header = worksheet.getRow(1);
   header.height = 26;
   header.font = { bold: true, color: { argb: "FF172033" } };
@@ -33,15 +51,23 @@ export function styleOrderSheet(worksheet: ExcelJS.Worksheet) {
   header.eachCell((cell) => {
     cell.border = { bottom: { style: "thin", color: { argb: "FF9CB6D9" } } };
   });
+}
+
+export function styleOrderSheet(worksheet: ExcelJS.Worksheet) {
+  styleSheet(worksheet, "R");
   worksheet.getColumn("quantity").numFmt = "0.00";
   worksheet.getColumn("price").numFmt = "#,##0.00";
+}
+
+export function styleCustomerSheet(worksheet: ExcelJS.Worksheet) {
+  styleSheet(worksheet, "N");
 }
 
 export function normalizeHeader(value: unknown) {
   return String(value ?? "")
     .trim()
     .toLowerCase()
-    .replace(/[\s._/()-]/g, "");
+    .replace(/[\s._/()（）【】-]/g, "");
 }
 
 export const headerAliases: Record<string, string[]> = {
@@ -63,6 +89,23 @@ export const headerAliases: Record<string, string[]> = {
   contractNo: ["contractno", "合同号"],
   invoiceNo: ["invoice", "invoiceno", "发票号"],
   status: ["status", "状态"],
+};
+
+export const customerHeaderAliases: Record<string, string[]> = {
+  name: ["客户名称", "客户名称中文", "客户", "中文名称", "customer", "customername", "name"],
+  nameEn: ["客户名称英文", "英文名称", "英文名", "customernameen", "nameen", "englishname"],
+  category: ["客户分类", "分类", "category"],
+  industry: ["行业", "industry"],
+  country: ["国家", "country"],
+  region: ["地区", "城市", "region"],
+  address: ["详细地址", "地址", "address"],
+  description: ["客户简介", "简介", "备注", "description"],
+  ownerName: ["负责人", "销售负责人", "owner", "ownername"],
+  status: ["客户状态", "状态", "status"],
+  contactName: ["主要联系人", "联系人", "contact", "contactname"],
+  contactTitle: ["联系人职位", "职位", "contacttitle", "title"],
+  contactPhone: ["联系电话", "电话", "手机", "contactphone", "phone"],
+  contactEmail: ["联系邮箱", "邮箱", "contactemail", "email"],
 };
 
 export function parseExcelDate(value: unknown) {

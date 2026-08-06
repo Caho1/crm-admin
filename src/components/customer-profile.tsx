@@ -1,11 +1,12 @@
 "use client";
 
 import { ArrowLeftOutlined, EditOutlined } from "@ant-design/icons";
-import { Button, Descriptions, Empty, Skeleton, Tabs, Tag } from "antd";
+import { Button, Empty, Skeleton, Tabs, Tag } from "antd";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { dictLabelOf, type DictMap } from "@/lib/dicts";
+import { CustomerEditModal } from "./customer-form";
 import { CustomerOrders } from "./customer-orders";
 import { CustomerVisits } from "./customer-visits";
 import { useLocale } from "./providers";
@@ -28,6 +29,7 @@ export function CustomerProfile({ id }: { id: number }) {
   const [dicts, setDicts] = useState<DictMap>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,50 +96,41 @@ export function CustomerProfile({ id }: { id: number }) {
           {location ? <span><b>{t("国家 / 地区")}</b> {location}</span> : null}
           {industryLabel ? <span><b>{t("行业")}</b> {industryLabel}</span> : null}
         </div>
-        {/* 详情页主操作：有编辑权限时提供入口，跳回列表页并自动打开编辑弹窗 */}
+        {/* 详情页主操作：有编辑权限时就地开编辑弹窗，不跳回列表页 */}
         {data.canEdit !== false ? (
           <div className={styles.headerActions}>
-            <Link href={`/customers?edit=${id}`}>
-              <Button type="primary" icon={<EditOutlined />}>{t("编辑客户")}</Button>
-            </Link>
+            <Button type="primary" icon={<EditOutlined />} onClick={() => setEditOpen(true)}>{t("编辑客户")}</Button>
           </div>
         ) : null}
       </div>
 
-      <div className={styles.grid}>
-        <div className={styles.card}>
-          <h2 className={styles.cardTitle}>{t("客户信息")}</h2>
-          <Descriptions size="small" column={{ xs: 1, sm: 2 }} colon={false}>
-            <Descriptions.Item label={t("客户名称（英文）")} span={{ xs: 1, sm: 2 }}>{customer.nameEn || "-"}</Descriptions.Item>
-            <Descriptions.Item label={t("客户分类")}>{categoryLabel || "-"}</Descriptions.Item>
-            <Descriptions.Item label={t("客户状态")}><StatusTag value={String(customer.status)} label={{ potential: "潜在客户", active: "活跃客户", inactive: "已停用" }[String(customer.status)]} /></Descriptions.Item>
-            <Descriptions.Item label={t("负责人")}>{customer.ownerName}</Descriptions.Item>
-            <Descriptions.Item label={t("国家 / 地区")}>{location || "-"}</Descriptions.Item>
-            <Descriptions.Item label={t("行业")}>{industryLabel || "-"}</Descriptions.Item>
-            <Descriptions.Item label={t("地址")}>{customer.address || "-"}</Descriptions.Item>
-            <Descriptions.Item label={t("客户简介")} span={{ xs: 1, sm: 2 }}><span className={resStyles.preWrap}>{customer.description || "-"}</span></Descriptions.Item>
-          </Descriptions>
+      {/* 名称 / 状态 / 分类 / 负责人 / 国家地区 / 行业 都已在页头呈现，
+          这里只补页头没有的字段，压成一条窄信息条，把纵向空间让给订单表格 */}
+      <div className={styles.facts}>
+        <div className={styles.fact}>
+          <div className={styles.factLabel}>{t("地址")}</div>
+          <div className={styles.factValue}>{customer.address || "-"}</div>
         </div>
-
-        <aside className={styles.card}>
-          <h2 className={styles.cardTitle}>{t("客户档案")}</h2>
-          <div className={styles.sideBlock}>
-            <div className={styles.sideLabel}>{t("联系人")}</div>
-            <div className={styles.tagWrap}>
-              {data.contacts.length ? data.contacts.map((contact) => (
-                <Tag key={contact.id}>{contact.name}{contact.title ? ` · ${contact.title}` : ""}{contact.phone ? ` · ${contact.phone}` : ""}</Tag>
-              )) : <span className={resStyles.muted}>{t("暂无联系人")}</span>}
-            </div>
+        <div className={styles.fact}>
+          <div className={styles.factLabel}>{t("客户简介")}</div>
+          <div className={`${styles.factValue} ${resStyles.preWrap}`}>{customer.description || "-"}</div>
+        </div>
+        <div className={styles.fact}>
+          <div className={styles.factLabel}>{t("联系人")}</div>
+          <div className={styles.tagWrap}>
+            {data.contacts.length ? data.contacts.map((contact) => (
+              <Tag key={contact.id}>{contact.name}{contact.title ? ` · ${contact.title}` : ""}{contact.phone ? ` · ${contact.phone}` : ""}</Tag>
+            )) : <span className={resStyles.muted}>-</span>}
           </div>
-          <div className={styles.sideBlock}>
-            <div className={styles.sideLabel}>{t("协作成员")}</div>
-            <div className={styles.tagWrap}>
-              {data.members.length ? data.members.map((member) => (
-                <Tag key={member.id}>{member.name} · {member.access === "edit" ? t("可编辑") : t("可查看")}</Tag>
-              )) : <span className={resStyles.muted}>{t("暂无协作成员")}</span>}
-            </div>
+        </div>
+        <div className={styles.fact}>
+          <div className={styles.factLabel}>{t("协作成员")}</div>
+          <div className={styles.tagWrap}>
+            {data.members.length ? data.members.map((member) => (
+              <Tag key={member.id}>{member.name} · {member.access === "edit" ? t("可编辑") : t("可查看")}</Tag>
+            )) : <span className={resStyles.muted}>-</span>}
           </div>
-        </aside>
+        </div>
       </div>
 
       {/* 订单与拜访都挂在客户档案下，用 tab 切换避免页面纵向过长；
@@ -174,6 +167,13 @@ export function CustomerProfile({ id }: { id: number }) {
         ]}
       />
 
+      {/* 保存后就地刷新详情，不离开当前页面 */}
+      <CustomerEditModal
+        customerId={id}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onSaved={() => void load()}
+      />
     </div>
   );
 }

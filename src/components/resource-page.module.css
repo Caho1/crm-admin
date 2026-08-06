@@ -177,9 +177,10 @@
   white-space: nowrap;
 }
 
+/* 操作列是 flex 按钮组，表格整体居中后这里也跟着居中 */
 .rowActions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 2px;
 }
 

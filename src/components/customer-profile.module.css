@@ -72,46 +72,37 @@
   font-weight: 600;
 }
 
-/* ---- 两栏：客户信息 + 侧栏 ---- */
-.grid {
+/* ---- 补充字段信息条 ---- */
+/* 页头之外的字段压成一条 4 列窄条：标签在上、值在下，不再用整张卡片，
+   省下的纵向空间让订单表格尽量早出现 */
+.facts {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.card {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 28px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: #fff;
-  padding: 18px 20px;
+  padding: 12px 20px;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  margin-bottom: 16px;
 }
 
-.cardTitle {
-  margin: 0 0 14px;
-  color: #344054;
-  font-size: 14px;
-  font-weight: 660;
+.fact {
+  min-width: 0;
 }
 
-/* 字段名是扫读详情的锚点：加重字重和颜色，拉开与字段值的层次。
-   antd 的样式运行期注入顺序更靠后，这里加一层 .ant-descriptions 提优先级 */
-.card :global(.ant-descriptions) :global(.ant-descriptions-item-label) {
-  color: #344054;
-  font-weight: 600;
-}
-
-.sideBlock + .sideBlock {
-  margin-top: 18px;
-}
-
-.sideLabel {
+.factLabel {
   color: #98a2b3;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.03em;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
+}
+
+.factValue {
+  color: #344054;
+  font-size: 13.5px;
+  line-height: 1.5;
 }
 
 .tagWrap {
@@ -214,8 +205,14 @@
   margin: 28px auto;
 }
 
-@media (max-width: 860px) {
-  .grid {
+@media (max-width: 1100px) {
+  .facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .facts {
     grid-template-columns: 1fr;
   }
 }

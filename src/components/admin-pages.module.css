@@ -32,6 +32,11 @@
   gap: 8px;
 }
 
+/* 操作列跟着表格整体居中 */
+.rowActions {
+  justify-content: center;
+}
+
 .toolbar {
   margin-bottom: 12px;
   flex-wrap: wrap;
@@ -67,6 +72,11 @@
 .counts {
   color: #667085;
   font-size: 12px;
+  white-space: nowrap;
+}
+
+/* 时间戳这类不该断行的短文本 */
+.nowrap {
   white-space: nowrap;
 }
 

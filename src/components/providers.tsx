@@ -67,13 +67,16 @@ export function Providers({ children, initialLocale = "zh-CN" }: { children: Rea
           },
           components: {
             Layout: { bodyBg: "#f4f6f9", headerBg: "#ffffff", siderBg: "#ffffff" },
-            Menu: { itemBorderRadius: 6, itemHeight: 42, itemMarginInline: 10, itemSelectedBg: "#eaf3fb", itemSelectedColor: "#1769aa", horizontalItemSelectedBg: "#eaf3fb" },
+            // 横向导航保持 antd 规范：选中态是主色文字 + 底部指示条，不加背景块；
+            // 抽屉里的 inline 菜单才用软底选中样式
+            Menu: { itemBorderRadius: 6, itemHeight: 42, itemMarginInline: 10, itemSelectedBg: "#eaf3fb", itemSelectedColor: "#1769aa", horizontalLineHeight: "62px" },
             Table: { headerBg: "#f8fafc", rowHoverBg: "#f6f9fc" },
             Button: { primaryShadow: "none" },
           },
         }}
       >
-        <App>{children}</App>
+        {/* 顶栏 72px，提示条下移到顶栏下方，避免盖住导航 */}
+        <App message={{ top: 84 }}>{children}</App>
       </ConfigProvider>
     </LocaleContext.Provider>
   );

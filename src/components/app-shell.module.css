@@ -66,23 +66,15 @@
   gap: 12px;
 }
 
-/* 顶部横向导航：占满中间剩余空间，去掉 antd 默认下划线 */
+/* 顶部横向导航：占满中间剩余空间，并撑满整个 header 高度，
+   让 antd 的选中指示条正好落在 header 底边线上（官方 Layout 示例的做法）。
+   header 自己已有底边线，这里去掉 Menu 重复的一条 */
 .topMenu {
   flex: 1;
   min-width: 0;
+  align-self: stretch;
   border-bottom: none !important;
   background: transparent;
-}
-
-/* 选中项：软底 + 主色 + 加粗，替代 antd 默认底部细线，弱化 hover 的浅灰底 */
-.topMenu :global(.ant-menu-item-selected) {
-  color: #1769aa;
-  font-weight: 600;
-  background: #eaf3fb;
-}
-
-.topMenu :global(.ant-menu-item-selected::after) {
-  display: none;
 }
 
 .mobileMenuButton {

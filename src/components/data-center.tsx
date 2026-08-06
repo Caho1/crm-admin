@@ -1,33 +1,38 @@
 "use client";
 
 import { DownloadOutlined, FileExcelOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Empty, Table, Tag, Upload, type TableProps, type UploadFile } from "antd";
+import { Alert, App, Button, Empty, Table, Tabs, Tag, Upload, type TableProps, type UploadFile } from "antd";
 import { useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { useLocale } from "./providers";
 import styles from "./data-center.module.css";
 
-type PreviewRow = {
-  orderNo: string;
-  orderDate: string;
-  customerName: string;
-  className: string;
-  grade: string;
-  quantity: number;
-  price: number;
-  actualShipmentDate: string | null;
-  expectedArrivalDate: string | null;
-};
+type ImportMode = "create" | "update";
+type PreviewRow = Record<string, unknown> & { mode?: ImportMode };
 type ImportResult = {
   valid: boolean;
   totalRows?: number;
   validCount?: number;
+  createCount?: number;
+  updateCount?: number;
   imported?: number;
   errors: Array<{ row: number; message: string }>;
   preview?: PreviewRow[];
 };
 
-export function DataCenter() {
+type PanelConfig = {
+  endpoint: string;
+  templateHref: string;
+  exportHref?: string;
+  templateLabel: string;
+  exportLabel?: string;
+  uploadText: string;
+  hint: string;
+  columns: TableProps<PreviewRow>["columns"];
+  rowKey: (row: PreviewRow, index?: number) => string;
+};
+
+function ImportPanel({ config }: { config: PanelConfig }) {
   const { t } = useLocale();
   const { message } = App.useApp();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
@@ -47,12 +52,12 @@ export function DataCenter() {
       const form = new FormData();
       form.append("file", file);
       form.append("commit", String(commit));
-      const response = await apiFetch("/api/data/orders-import", { method: "POST", body: form });
+      const response = await apiFetch(config.endpoint, { method: "POST", body: form });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message || "Excel 处理失败");
       setResult(payload.data);
       if (commit) {
-        message.success(t("成功导入 {n} 条订单", { n: payload.data.imported }));
+        message.success(t("新增 {created} 条，更新 {updated} 条", { created: payload.data.createCount ?? 0, updated: payload.data.updateCount ?? 0 }));
         setFileList([]);
       } else if (payload.data.valid) {
         message.success(t("预检通过，可以确认导入"));
@@ -67,25 +72,16 @@ export function DataCenter() {
     }
   };
 
-  const previewColumns: TableProps<PreviewRow>["columns"] = [
-    { title: t("订单编号"), dataIndex: "orderNo", width: 160 },
-    { title: t("下单日期"), dataIndex: "orderDate", width: 110 },
-    { title: t("客户"), dataIndex: "customerName", width: 190, ellipsis: true },
-    { title: t("产品"), key: "product", width: 140, render: (_, row) => `${row.className} / ${row.grade}` },
-    { title: t("数量"), dataIndex: "quantity", width: 90 },
-    { title: t("单价"), dataIndex: "price", width: 100 },
-    { title: t("实际出货"), dataIndex: "actualShipmentDate", width: 110, render: (value) => value || "-" },
-    { title: t("预计到港"), dataIndex: "expectedArrivalDate", width: 110, render: (value) => value || "-" },
-  ];
+  const done = result?.imported !== undefined;
 
   return (
     <div>
       <div className={styles.header}>
-        <h2 className={styles.sectionTitle}>{t("订单 Excel 导入导出")}</h2>
         <div className={styles.headerActions}>
-          <Button icon={<FileExcelOutlined />} href="/api/data/orders-template">{t("下载订单模板")}</Button>
-          {/* 订单列表页已并入客户档案，全量导出的入口收在这里 */}
-          <Button icon={<DownloadOutlined />} href="/api/data/orders-export">{t("导出全部订单")}</Button>
+          <Button icon={<FileExcelOutlined />} href={config.templateHref}>{config.templateLabel}</Button>
+          {config.exportHref ? (
+            <Button icon={<DownloadOutlined />} href={config.exportHref}>{config.exportLabel}</Button>
+          ) : null}
         </div>
       </div>
       <section className={styles.section}>
@@ -100,8 +96,8 @@ export function DataCenter() {
             onRemove={() => { setFileList([]); setResult(null); }}
           >
             <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-            <p className="ant-upload-text">{t("选择或拖入订单 Excel")}</p>
-            <p className="ant-upload-hint">{t("支持 .xlsx，单个文件不超过 5MB")}</p>
+            <p className="ant-upload-text">{config.uploadText}</p>
+            <p className="ant-upload-hint">{config.hint}</p>
           </Upload.Dragger>
           <div className={styles.actions}>
             <Button icon={<UploadOutlined />} loading={checking} disabled={!fileList.length} onClick={() => void upload(false)}>{t("开始预检")}</Button>
@@ -111,19 +107,20 @@ export function DataCenter() {
       </section>
       {result ? (
         <section className={styles.section}>
-          <div className={styles.sectionHeader}><h2 className={styles.sectionTitle}>{result.imported !== undefined ? t("导入结果") : t("预检结果")}</h2></div>
+          <div className={styles.sectionHeader}><h2 className={styles.sectionTitle}>{done ? t("导入结果") : t("预检结果")}</h2></div>
           <div className={styles.sectionBody}>
             <div className={styles.resultSummary}>
-              <Tag color={result.valid ? "green" : "red"}>{result.valid ? (result.imported !== undefined ? t("导入成功") : t("预检通过")) : t("存在错误")}</Tag>
+              <Tag color={result.valid ? "green" : "red"}>{result.valid ? (done ? t("导入成功") : t("预检通过")) : t("存在错误")}</Tag>
               {result.totalRows !== undefined ? <span>{t("共 {total} 行，可导入 {valid} 行", { total: result.totalRows, valid: result.validCount ?? 0 })}</span> : null}
-              {result.imported !== undefined ? <span>{t("已导入 {n} 行", { n: result.imported })}</span> : null}
+              {/* 新增与更新分开报数，导入前就能看清哪些是覆盖已有数据 */}
+              {result.createCount !== undefined ? <Tag color="blue">{t("新增 {n} 条", { n: result.createCount })}</Tag> : null}
+              {result.updateCount !== undefined ? <Tag color="gold">{t("更新 {n} 条", { n: result.updateCount })}</Tag> : null}
             </div>
-            {result.imported !== undefined ? (
-              // 导入成功后给出明确收尾与下一步，不再展示空预览
+            {done ? (
               <Alert
                 showIcon
                 type="success"
-                title={t("成功导入 {n} 条订单", { n: result.imported })}
+                title={t("新增 {created} 条，更新 {updated} 条", { created: result.createCount ?? 0, updated: result.updateCount ?? 0 })}
                 action={<Button size="small" href="/customers">{t("查看客户")}</Button>}
               />
             ) : result.errors.length ? (
@@ -131,7 +128,14 @@ export function DataCenter() {
                 {result.errors.map((error) => <li key={`${error.row}-${error.message}`}>{t("第 {row} 行", { row: error.row })}：{error.message}</li>)}
               </ul>
             ) : result.preview?.length ? (
-              <Table rowKey="orderNo" size="small" columns={previewColumns} dataSource={result.preview} pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }} scroll={{ x: 1000 }} />
+              <Table
+                rowKey={config.rowKey}
+                size="small"
+                columns={config.columns}
+                dataSource={result.preview}
+                pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }}
+                scroll={{ x: 1000 }}
+              />
             ) : (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("没有可预览的数据")} />
             )}
@@ -139,5 +143,77 @@ export function DataCenter() {
         </section>
       ) : null}
     </div>
+  );
+}
+
+export function DataCenter() {
+  const { t } = useLocale();
+
+  // 预检表格第一列统一标出这一行是新增还是覆盖已有记录
+  const modeColumn = {
+    title: t("处理方式"),
+    dataIndex: "mode",
+    width: 90,
+    render: (value: ImportMode) => (
+      <Tag color={value === "update" ? "gold" : "blue"}>{value === "update" ? t("更新") : t("新增")}</Tag>
+    ),
+  };
+
+  const customerStatusLabels: Record<string, string> = {
+    potential: t("潜在客户"),
+    active: t("活跃客户"),
+    inactive: t("已停用"),
+  };
+
+  const customers: PanelConfig = {
+    endpoint: "/api/data/customers-import",
+    templateHref: "/api/data/customers-template",
+    templateLabel: t("下载客户模板"),
+    uploadText: t("选择或拖入客户 Excel"),
+    hint: t("支持 .xlsx，单个文件不超过 5MB；同名客户按名称匹配并更新，留空的列保持原值"),
+    rowKey: (row, index) => `${String(row.name ?? "")}-${index}`,
+    columns: [
+      modeColumn,
+      { title: t("客户名称"), dataIndex: "name", width: 200, ellipsis: true },
+      { title: t("英文名称"), dataIndex: "nameEn", width: 190, ellipsis: true, render: (value) => String(value || "-") },
+      { title: t("客户分类"), dataIndex: "category", width: 110, render: (value) => String(value || "-") },
+      { title: t("行业"), dataIndex: "industry", width: 110, render: (value) => String(value || "-") },
+      { title: t("负责人"), dataIndex: "ownerName", width: 100, render: (value) => String(value || "-") },
+      { title: t("状态"), dataIndex: "status", width: 100, render: (value) => customerStatusLabels[String(value)] || String(value || "-") },
+      { title: t("主要联系人"), dataIndex: "contactName", width: 120, ellipsis: true, render: (value) => String(value || "-") },
+    ],
+  };
+
+  const orders: PanelConfig = {
+    endpoint: "/api/data/orders-import",
+    templateHref: "/api/data/orders-template",
+    exportHref: "/api/data/orders-export",
+    templateLabel: t("下载订单模板"),
+    exportLabel: t("导出全部订单"),
+    uploadText: t("选择或拖入订单 Excel"),
+    hint: t("支持 .xlsx，单个文件不超过 5MB；订单编号已存在的行会更新该订单，留空的列保持原值"),
+    rowKey: (row, index) => `${String(row.orderNo ?? "")}-${index}`,
+    columns: [
+      modeColumn,
+      { title: t("订单编号"), dataIndex: "orderNo", width: 160 },
+      { title: t("下单日期"), dataIndex: "orderDate", width: 110 },
+      { title: t("客户"), dataIndex: "customerName", width: 190, ellipsis: true },
+      { title: t("产品"), key: "product", width: 140, render: (_, row) => `${row.className} / ${row.grade}` },
+      { title: t("数量"), dataIndex: "quantity", width: 90 },
+      { title: t("单价"), dataIndex: "price", width: 100 },
+      { title: t("实际出货"), dataIndex: "actualShipmentDate", width: 110, render: (value) => String(value || "-") },
+      { title: t("预计到港"), dataIndex: "expectedArrivalDate", width: 110, render: (value) => String(value || "-") },
+    ],
+  };
+
+  return (
+    <Tabs
+      defaultActiveKey="customers"
+      items={[
+        // 客户名单在前：先把开发中的客户导进来，订单导入时才能按客户名匹配上
+        { key: "customers", label: t("客户名单"), children: <ImportPanel config={customers} /> },
+        { key: "orders", label: t("订单"), children: <ImportPanel config={orders} /> },
+      ]}
+    />
   );
 }

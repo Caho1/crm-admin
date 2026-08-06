@@ -8,6 +8,9 @@ import { headerAliases, normalizeHeader, parseExcelDate, parseExcelNumber, parse
 export const runtime = "nodejs";
 
 type ImportedOrder = {
+  /** 订单编号在库里已存在 → 更新那条订单；否则新建 */
+  mode: "create" | "update";
+  id: number | null;
   orderNo: string;
   orderDate: string;
   customerId: number;
@@ -17,17 +20,18 @@ type ImportedOrder = {
   grade: string;
   quantity: number;
   price: number;
-  currency: string;
-  destination: string;
-  tradeTerms: string;
-  paymentMethod: string;
+  /** 以下可选列留空表示「不改」：新建时落默认值，更新时保持库里原值 */
+  currency: string | null;
+  destination: string | null;
+  tradeTerms: string | null;
+  paymentMethod: string | null;
   shipmentMonth: string | null;
   lcTtDate: string | null;
   actualShipmentDate: string | null;
   expectedArrivalDate: string | null;
-  contractNo: string;
-  invoiceNo: string;
-  status: string;
+  contractNo: string | null;
+  invoiceNo: string | null;
+  status: string | null;
 };
 
 function valueOf(row: ExcelJS.Row, mapping: Record<string, number>, field: string) {
@@ -53,11 +57,18 @@ const STATUS_ALIASES: Record<string, string> = {
   已取消: "cancelled",
 };
 
-function parseStatus(value: unknown, actualShipmentDate: string | null) {
+// 状态留空返回 null：新建时按是否已出货推断，更新时保持库里原状态
+function parseStatus(value: unknown) {
   const text = String(value ?? "").trim();
-  if (!text) return { status: actualShipmentDate ? "shipped" : "planned", invalid: null as string | null };
+  if (!text) return { status: null as string | null, invalid: null as string | null };
   const mapped = STATUS_ALIASES[text] ?? STATUS_ALIASES[text.toLowerCase()];
   return mapped ? { status: mapped, invalid: null } : { status: null as string | null, invalid: text };
+}
+
+/** 可选文本列：留空返回 null，代表这一列不参与写入 */
+function optionalText(value: unknown) {
+  const text = String(value ?? "").trim();
+  return text || null;
 }
 
 export async function POST(request: Request) {
@@ -125,11 +136,13 @@ export async function POST(request: Request) {
         ? null
         : parseShipmentMonth(shipmentMonthRaw, orderDate);
       if (shipmentMonthRaw !== null && String(shipmentMonthRaw).trim() !== "" && !shipmentMonth) rowErrors.push("出货月份格式无效");
-      const { status, invalid: invalidStatus } = parseStatus(valueOf(row, mapping, "status"), actualShipmentDate);
+      const { status, invalid: invalidStatus } = parseStatus(valueOf(row, mapping, "status"));
       if (invalidStatus) rowErrors.push(`状态“${invalidStatus}”无效（可用：待确认 / 待出货 / 已出货 / 已到港 / 已取消）`);
       const suppliedOrderNo = String(valueOf(row, mapping, "orderNo") ?? "").trim();
-      // 与界面建单同一口径：不区分大小写；已软删订单的编号已释放，可重新导入
-      if (suppliedOrderNo && db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND deleted_at IS NULL").get(suppliedOrderNo)) rowErrors.push(`订单编号“${suppliedOrderNo}”已存在`);
+      // 与界面建单同一口径：不区分大小写；编号已存在则更新那条订单（已软删的编号视为已释放，重新建单）
+      const existing = suppliedOrderNo
+        ? (db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND deleted_at IS NULL").get(suppliedOrderNo) as { id: number } | undefined)
+        : undefined;
       if (suppliedOrderNo && seenOrderNos.has(suppliedOrderNo.toLowerCase())) rowErrors.push(`订单编号“${suppliedOrderNo}”在文件中重复`);
       if (suppliedOrderNo) seenOrderNos.add(suppliedOrderNo.toLowerCase());
       if (rowErrors.length) {
@@ -137,6 +150,8 @@ export async function POST(request: Request) {
         continue;
       }
       validRows.push({
+        mode: existing ? "update" : "create",
+        id: existing?.id ?? null,
         orderNo: suppliedOrderNo || generatedCode("SO"),
         orderDate: orderDate!,
         customerId: customer!.id,
@@ -146,26 +161,37 @@ export async function POST(request: Request) {
         grade: product!.grade,
         quantity: quantity!,
         price: price!,
-        currency: String(valueOf(row, mapping, "currency") ?? "USD").trim() || "USD",
-        destination: String(valueOf(row, mapping, "destination") ?? "").trim(),
-        tradeTerms: String(valueOf(row, mapping, "tradeTerms") ?? "").trim(),
-        paymentMethod: String(valueOf(row, mapping, "paymentMethod") ?? "").trim(),
+        currency: optionalText(valueOf(row, mapping, "currency")),
+        destination: optionalText(valueOf(row, mapping, "destination")),
+        tradeTerms: optionalText(valueOf(row, mapping, "tradeTerms")),
+        paymentMethod: optionalText(valueOf(row, mapping, "paymentMethod")),
         shipmentMonth,
         lcTtDate,
         actualShipmentDate,
         expectedArrivalDate,
-        contractNo: String(valueOf(row, mapping, "contractNo") ?? "").trim(),
-        invoiceNo: String(valueOf(row, mapping, "invoiceNo") ?? "").trim(),
-        status: status!,
+        contractNo: optionalText(valueOf(row, mapping, "contractNo")),
+        invoiceNo: optionalText(valueOf(row, mapping, "invoiceNo")),
+        status,
       });
     }
 
+    const createCount = validRows.filter((row) => row.mode === "create").length;
+    const updateCount = validRows.length - createCount;
+
     if (!commit || errors.length) {
-      return ok({ valid: errors.length === 0, totalRows: validRows.length + errors.length, validCount: validRows.length, errors, preview: validRows.slice(0, 20) });
+      return ok({
+        valid: errors.length === 0,
+        totalRows: validRows.length + errors.length,
+        validCount: validRows.length,
+        createCount,
+        updateCount,
+        errors,
+        preview: validRows.slice(0, 20),
+      });
     }
 
-    const inserted = db.transaction(() => {
-      const statement = db.prepare(`
+    db.transaction(() => {
+      const insert = db.prepare(`
         INSERT INTO orders
           (order_no, order_date, customer_id, product_id, quantity, price, currency,
            destination, trade_terms, payment_method, shipment_month, lc_tt_date,
@@ -173,17 +199,45 @@ export async function POST(request: Request) {
            status, owner_id, notes, created_by)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)
       `);
+      // 可选列 → 数据库列，更新时只写文件里填了的
+      const optionalColumns: Array<[keyof ImportedOrder, string]> = [
+        ["currency", "currency"],
+        ["destination", "destination"],
+        ["tradeTerms", "trade_terms"],
+        ["paymentMethod", "payment_method"],
+        ["shipmentMonth", "shipment_month"],
+        ["lcTtDate", "lc_tt_date"],
+        ["actualShipmentDate", "actual_shipment_date"],
+        ["expectedArrivalDate", "expected_arrival_date"],
+        ["contractNo", "contract_no"],
+        ["invoiceNo", "invoice_no"],
+        ["status", "status"],
+      ];
       for (const row of validRows) {
-        const owner = db.prepare("SELECT owner_id AS ownerId FROM customers WHERE id = ?").get(row.customerId) as { ownerId: number };
-        statement.run(row.orderNo, row.orderDate, row.customerId, row.productId, row.quantity,
-          row.price, row.currency, row.destination, row.tradeTerms, row.paymentMethod,
-          row.shipmentMonth, row.lcTtDate, row.actualShipmentDate, row.expectedArrivalDate,
-          row.contractNo, row.invoiceNo, row.status, owner.ownerId, admin.id);
+        if (row.mode === "create") {
+          const owner = db.prepare("SELECT owner_id AS ownerId FROM customers WHERE id = ?").get(row.customerId) as { ownerId: number };
+          insert.run(row.orderNo, row.orderDate, row.customerId, row.productId, row.quantity,
+            row.price, row.currency ?? "USD", row.destination ?? "", row.tradeTerms ?? "", row.paymentMethod ?? "",
+            row.shipmentMonth, row.lcTtDate, row.actualShipmentDate, row.expectedArrivalDate,
+            row.contractNo ?? "", row.invoiceNo ?? "", row.status ?? (row.actualShipmentDate ? "shipped" : "planned"),
+            owner.ownerId, admin.id);
+          continue;
+        }
+        // 更新：必填列（日期 / 客户 / 产品 / 数量 / 单价）总是覆盖，负责人和备注保持不动
+        const assignments = ["order_date = ?", "customer_id = ?", "product_id = ?", "quantity = ?", "price = ?"];
+        const params: unknown[] = [row.orderDate, row.customerId, row.productId, row.quantity, row.price];
+        for (const [field, column] of optionalColumns) {
+          const value = row[field];
+          if (value === null || value === undefined) continue;
+          assignments.push(`${column} = ?`);
+          params.push(value);
+        }
+        assignments.push("updated_at = datetime('now')");
+        db.prepare(`UPDATE orders SET ${assignments.join(", ")} WHERE id = ?`).run(...params, row.id);
       }
-      return validRows.length;
     })();
-    writeAudit(admin.id, "import", "order", null, `从 ${file.name} 导入 ${inserted} 条订单`);
-    return ok({ valid: true, imported: inserted, errors: [] });
+    writeAudit(admin.id, "import", "order", null, `从 ${file.name} 导入订单：新增 ${createCount} 条，更新 ${updateCount} 条`);
+    return ok({ valid: true, imported: validRows.length, createCount, updateCount, errors: [] });
   } catch (error) {
     return handleApiError(error);
   }

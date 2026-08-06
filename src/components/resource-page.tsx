@@ -12,11 +12,9 @@ import {
 import {
   App,
   Button,
-  DatePicker,
   Empty,
   Form,
   Input,
-  InputNumber,
   Modal,
   Popconfirm,
   Pagination,
@@ -32,7 +30,17 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TranslateVars } from "@/lib/i18n";
 import { apiFetch } from "@/lib/client-fetch";
-import { dictLabel, dictLabelOf, type DictMap, type DictType } from "@/lib/dicts";
+import { dictLabel, dictLabelOf, type DictType } from "@/lib/dicts";
+import {
+  ResourceFormFields,
+  buildCustomerFields,
+  customerFormValues,
+  customerStatusOptions,
+  emptyLookups,
+  type Field,
+  type Lookups,
+  type Option,
+} from "./customer-form";
 import { useLocale } from "./providers";
 import { useCurrentUser } from "./user-context";
 import { StatusTag } from "./status-tag";
@@ -40,27 +48,6 @@ import styles from "./resource-page.module.css";
 
 export type ResourceKind = "customers" | "products";
 type RowData = Record<string, unknown> & { id: number; canEdit?: number };
-type LookupItem = { id: number; name?: string; label?: string; className?: string; grade?: string; role?: string; status?: string };
-type Lookups = { customers: LookupItem[]; products: LookupItem[]; users: LookupItem[]; dicts: DictMap };
-type Option = { label: string; value: string | number };
-type FieldType = "input" | "textarea" | "select" | "multi" | "date" | "month" | "number";
-type Field = {
-  name: string;
-  label: string;
-  type: FieldType;
-  required?: boolean;
-  full?: boolean;
-  adminOnly?: boolean;
-  source?: "customers" | "products" | "users";
-  /** 取「设置 → 标签配置」里维护的下拉选项 */
-  dictType?: DictType;
-  options?: Option[];
-  placeholder?: string;
-  rows?: number;
-  min?: number;
-  precision?: number;
-  maxLength?: number;
-};
 type Column = {
   title: string;
   dataIndex?: string;
@@ -94,18 +81,14 @@ type TFn = (text: string, vars?: TranslateVars) => string;
 
 // 配置随语言重建：所有标题、列名、字段名、占位符在这里统一翻译
 function buildConfigs(t: TFn): Record<ResourceKind, Config> {
-  const customerStatuses: Option[] = [
-    { label: t("潜在客户"), value: "potential" },
-    { label: t("活跃客户"), value: "active" },
-    { label: t("已停用"), value: "inactive" },
-  ];
+  const customerStatuses = customerStatusOptions(t);
 
   return {
     customers: {
       endpoint: "/api/customers",
       createLabel: t("新建客户"),
       editLabel: t("编辑客户"),
-      searchPlaceholder: t("中英文名称、地址、地区、行业"),
+      searchPlaceholder: t("名称、负责人、联系人、地址、分类、行业"),
       filterKey: "status",
       filterPlaceholder: t("客户状态"),
       filterOptions: customerStatuses,
@@ -125,23 +108,8 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
         { title: t("订单"), dataIndex: "orderCount", width: 70, kind: "number" },
         { title: t("状态"), dataIndex: "status", width: 100, kind: "status" },
       ],
-      fields: [
-        { name: "name", label: t("客户名称（中文）"), type: "input", required: true, full: true },
-        { name: "nameEn", label: t("客户名称（英文）"), type: "input", full: true, placeholder: t("完整英文名称，便于按英文模糊查找") },
-        { name: "category", label: t("客户分类"), type: "select", dictType: "customer_category" },
-        { name: "status", label: t("客户状态"), type: "select", required: true, options: customerStatuses },
-        { name: "industry", label: t("行业"), type: "select", dictType: "industry" },
-        { name: "ownerId", label: t("负责人"), type: "select", source: "users", adminOnly: true },
-        { name: "country", label: t("国家"), type: "input" },
-        { name: "region", label: t("地区"), type: "input" },
-        { name: "memberIds", label: t("协作成员"), type: "multi", source: "users", adminOnly: true },
-        { name: "address", label: t("详细地址"), type: "input", full: true, placeholder: t("详细到街道门牌，搜索时可按地址关键词查找") },
-        { name: "description", label: t("客户简介"), type: "textarea", rows: 3, full: true, maxLength: 2000 },
-        { name: "contactName", label: t("主要联系人"), type: "input" },
-        { name: "contactTitle", label: t("联系人职位"), type: "input" },
-        { name: "contactPhone", label: t("联系电话"), type: "input" },
-        { name: "contactEmail", label: t("联系邮箱"), type: "input" },
-      ],
+      // 字段配置与客户详情页的编辑弹窗共用，见 customer-form.tsx
+      fields: buildCustomerFields(t),
       defaults: (userId) => ({ status: "potential", ownerId: userId, memberIds: [] }),
     },
     products: {
@@ -177,26 +145,6 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
   };
 }
 
-function optionsFor(field: Field, lookups: Lookups, t: TFn, editing: boolean, locale: string): Option[] {
-  if (field.options) return field.options;
-  // 标签字典驱动的下拉：选项来自「设置 → 标签配置」，存 code、显示当前语言的 label
-  if (field.dictType) {
-    return (lookups.dicts?.[field.dictType] || []).map((item) => ({
-      value: item.code,
-      label: dictLabel(item, locale),
-    }));
-  }
-  let source = field.source ? lookups[field.source] : [];
-  // 新建时只能选启用中的产品；编辑历史单据时已停用产品仍要能回显（标注「已停用」）
-  if (field.source === "products" && !editing) source = source.filter((item) => item.status !== "inactive");
-  return source.map((item) => ({
-    value: item.id,
-    label:
-      (item.label || item.name || `${item.className} / ${item.grade}`) +
-      (item.status === "inactive" ? `（${t("已停用")}）` : ""),
-  }));
-}
-
 function formatNumber(value: unknown) {
   if (value === null || value === undefined || value === "") return "-";
   return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(Number(value));
@@ -211,7 +159,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [rows, setRows] = useState<RowData[]>([]);
-  const [lookups, setLookups] = useState<Lookups>({ customers: [], products: [], users: [], dicts: {} });
+  const [lookups, setLookups] = useState<Lookups>(emptyLookups);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
@@ -324,15 +272,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
         const response = await apiFetch(`/api/customers/${record.id}`);
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error?.message || "客户详情加载失败");
-        const firstContact = payload.data.contacts?.[0] || {};
-        values = {
-          ...payload.data.customer,
-          memberIds: payload.data.members.map((item: LookupItem) => item.id),
-          contactName: firstContact.name || "",
-          contactTitle: firstContact.title || "",
-          contactPhone: firstContact.phone || "",
-          contactEmail: firstContact.email || "",
-        };
+        values = customerFormValues(payload.data) as RowData;
       } catch (error) {
         message.error(t(error instanceof Error ? error.message : "客户详情加载失败"));
         return;
@@ -342,19 +282,6 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
     setInitialValues(normalizeForForm(values));
     setModalOpen(true);
   };
-
-  // 客户详情页的「编辑客户」跳 /customers?edit=<id>，挂载后直接打开对应编辑弹窗；
-  // openEdit 对 customers 会按 id 拉详情，无需行数据
-  const editHandled = useRef(false);
-  useEffect(() => {
-    if (editHandled.current || typeof window === "undefined") return;
-    const editId = new URLSearchParams(window.location.search).get("edit");
-    if (!editId) return;
-    editHandled.current = true;
-    // 清掉 edit= 参数，避免刷新页面时再次弹出编辑框
-    window.history.replaceState(null, "", window.location.pathname);
-    void openEdit({ id: Number(editId) } as RowData);
-  }, [openEdit]);
 
   // 客户详情改为独立子页，点击客户名 / 查看均跳转 /customers/[id]
   const viewCustomer = (record: RowData) => {
@@ -411,36 +338,6 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
   const recordLabel = (record: RowData) => {
     if (resource === "products") return [record.className, record.grade].filter(Boolean).join(" / ");
     return String(record.name || record.id);
-  };
-
-  const visibleFields = config.fields.filter((field) => !field.adminOnly || user.role === "admin");
-  const renderField = (field: Field) => {
-    const commonSelectProps = {
-      showSearch: true,
-      allowClear: !field.required,
-      optionFilterProp: "label" as const,
-      options: optionsFor(field, lookups, t, Boolean(editing), locale),
-      placeholder: field.placeholder || t("请选择{label}", { label: field.label }),
-    };
-    let control: React.ReactNode;
-    if (field.type === "textarea") control = <Input.TextArea rows={field.rows || 3} placeholder={field.placeholder || t("请输入{label}", { label: field.label })} showCount maxLength={field.maxLength || 2000} />;
-    else if (field.type === "select") control = <Select {...commonSelectProps} />;
-    else if (field.type === "multi") control = <Select {...commonSelectProps} mode="multiple" maxTagCount="responsive" />;
-    else if (field.type === "date") control = <DatePicker style={{ width: "100%" }} format="YYYY-MM-DD" />;
-    else if (field.type === "month") control = <DatePicker style={{ width: "100%" }} picker="month" format="YYYY-MM" />;
-    else if (field.type === "number") control = <InputNumber style={{ width: "100%" }} min={field.min} precision={field.precision} placeholder={t("请输入{label}", { label: field.label })} />;
-    else control = <Input placeholder={field.placeholder || t("请输入{label}", { label: field.label })} />;
-    return (
-      <Form.Item
-        key={field.name}
-        className={field.full ? styles.fieldFull : undefined}
-        name={field.name}
-        label={field.label}
-        rules={field.required ? [{ required: true, message: t("{label}不能为空", { label: field.label }) }] : undefined}
-      >
-        {control}
-      </Form.Item>
-    );
   };
 
   const tableColumns: TableProps<RowData>["columns"] = (() => {
@@ -679,7 +576,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
       >
         {/* destroyOnHidden 保证每次打开重新挂载，initialValues 在首帧即生效，避免先空后填的闪烁 */}
         <Form form={form} layout="vertical" requiredMark="optional" preserve={false} initialValues={initialValues}>
-          <div className={styles.formGrid}>{visibleFields.map(renderField)}</div>
+          <ResourceFormFields fields={config.fields} lookups={lookups} editing={Boolean(editing)} />
         </Form>
       </Modal>
     </div>

@@ -37,10 +37,17 @@ type InsightsData = {
 
 type TrendGranularity = "year" | "month" | "week";
 
-// 桶 key 转成坐标轴短标签与悬浮提示完整标题
+// 桶 key 转成坐标轴短标签与悬浮提示完整标题。
+// 解析不出来时回退成原始 bucket，宁可显示 2026-08 也不要显示 Invalid Date
 function formatTrendBucket(bucket: string, granularity: TrendGranularity) {
-  if (granularity === "week") return { label: dayjs(bucket).format("M/D"), title: bucket };
-  if (granularity === "month") return { label: dayjs(`${bucket}-01`).format("MMM"), title: bucket };
+  if (granularity === "week") {
+    const parsed = dayjs(bucket);
+    return { label: parsed.isValid() ? parsed.format("M/D") : bucket, title: bucket };
+  }
+  if (granularity === "month") {
+    const parsed = dayjs(`${bucket}-01`);
+    return { label: parsed.isValid() ? parsed.format("MMM") : bucket, title: bucket };
+  }
   return { label: bucket, title: bucket };
 }
 
@@ -51,7 +58,9 @@ export function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [granularity, setGranularity] = useState<TrendGranularity>("month");
-  const [trend, setTrend] = useState<Array<{ bucket: string; count: number; amount: number }> | null>(null);
+  // 数据和它对应的粒度绑在一起存：切换粒度到新数据返回之间，
+  // 图表继续用旧粒度渲染旧数据，不会拿新粒度去解析旧的桶 key（会出 Invalid Date）
+  const [trend, setTrend] = useState<{ granularity: TrendGranularity; rows: Array<{ bucket: string; count: number; amount: number }> } | null>(null);
   const [insights, setInsights] = useState<InsightsData | null>(null);
 
   const load = useCallback(async () => {
@@ -85,7 +94,7 @@ export function Dashboard() {
         const response = await apiFetch(`/api/dashboard/trend?granularity=${granularity}`);
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error?.message || "订单趋势加载失败");
-        if (!cancelled) setTrend(payload.data.trend);
+        if (!cancelled) setTrend({ granularity, rows: payload.data.trend });
       } catch (error) {
         if (!cancelled) message.error(t(error instanceof Error ? error.message : "订单趋势加载失败"));
       }
@@ -111,6 +120,8 @@ export function Dashboard() {
 
   // locale 变化时 dayjs 全局语言已由 Providers 切换，这里只需按语言选格式
   void locale;
+
+  const trendData = trend?.rows.map((item) => ({ ...item, ...formatTrendBucket(item.bucket, trend.granularity) })) ?? null;
 
   return (
     <div>
@@ -164,9 +175,9 @@ export function Dashboard() {
                   />
                 </div>
               </div>
-              {trend ? (
+              {trendData ? (
                 <TrendArea
-                  data={trend.map((item) => ({ ...item, ...formatTrendBucket(item.bucket, granularity) }))}
+                  data={trendData}
                   emptyText={t("暂无订单数据")}
                   tooltipName={t("订单数")}
                 />
@@ -179,9 +190,9 @@ export function Dashboard() {
                 <h2 className={styles.panelTitle}>{t("订单金额趋势")}</h2>
                 <span className={styles.panelHint}>{t("已排除取消订单")}</span>
               </div>
-              {trend ? (
+              {trendData ? (
                 <AmountArea
-                  data={trend.map((item) => ({ ...item, ...formatTrendBucket(item.bucket, granularity) }))}
+                  data={trendData}
                   emptyText={t("暂无订单数据")}
                   tooltipName={t("订单金额")}
                 />

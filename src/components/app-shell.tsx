@@ -48,7 +48,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
       { key: "/customers", icon: <TeamOutlined />, label: t("客户管理") },
       // 拜访记录仍挂在客户档案页（天然绑定客户）；订单有全局管理页
       { key: "/orders", icon: <ShoppingOutlined />, label: t("订单管理") },
-      { key: "/products", icon: <ProductOutlined />, label: t("产品型号 / 牌号") },
+      { key: "/products", icon: <ProductOutlined />, label: t("产品型号") },
     ];
     // 低频管理功能（人员权限 / 数据导入 / 操作日志）收进管理员专属的「设置」页
     if (user.role === "admin") {

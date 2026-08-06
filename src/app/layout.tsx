@@ -3,6 +3,7 @@ import { AntdRegistry } from "@ant-design/nextjs-registry";
 import { cookies } from "next/headers";
 import { Providers } from "@/components/providers";
 import { LOCALE_COOKIE, normalizeLocale } from "@/lib/i18n";
+import { inter, notoSansKR, notoSansSC } from "./fonts";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,7 +23,7 @@ export default async function RootLayout({
   const locale = normalizeLocale(store.get(LOCALE_COOKIE)?.value);
   return (
     <html lang={locale}>
-      <body>
+      <body className={`${inter.variable} ${notoSansSC.variable} ${notoSansKR.variable}`}>
         <AntdRegistry>
           <Providers initialLocale={locale}>{children}</Providers>
         </AntdRegistry>

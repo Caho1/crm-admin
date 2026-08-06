@@ -60,7 +60,10 @@ export function Providers({ children, initialLocale = "zh-CN" }: { children: Rea
             colorBorder: "#e3e8ef",
             borderRadius: 6,
             controlHeight: 36,
-            fontSize: 14,
+            fontSize: 15,
+            // 与 globals.css body 的字体栈保持一致（Google Fonts 变量在前，系统字体兜底）
+            fontFamily:
+              "var(--font-inter), var(--font-noto-sc), var(--font-noto-kr), -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans KR', Arial, sans-serif",
           },
           components: {
             Layout: { bodyBg: "#f4f6f9", headerBg: "#ffffff", siderBg: "#ffffff" },

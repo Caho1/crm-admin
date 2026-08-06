@@ -95,13 +95,15 @@ export function Dashboard() {
     };
   }, [granularity, message, t]);
 
+  // 「可见客户」下钻客户列表；三张订单卡下钻全局订单页的对应筛选视图；
+  // 拜访没有独立列表，只做展示
   const statItems = data
     ? [
         { label: t("可见客户"), value: data.stats.customers, icon: <TeamOutlined />, color: "#1769aa", bg: "#eaf3fb", href: "/customers" },
-        { label: t("本月拜访"), value: data.stats.visitsThisMonth, icon: <CalendarOutlined />, color: "#2f855a", bg: "#eaf7ef", href: "/customers" },
-        { label: t("本月订单"), value: data.stats.ordersThisMonth, icon: <ExportOutlined />, color: "#7c4d9e", bg: "#f3ecf8", href: "/customers" },
-        { label: t("待出货"), value: data.stats.pendingShipment, icon: <TruckOutlined />, color: "#b45309", bg: "#fff0e0", href: "/customers" },
-        { label: t("14 天内到港"), value: data.stats.arrivingSoon, icon: <TruckOutlined />, color: "#b73e3e", bg: "#fdecec", href: "/customers" },
+        { label: t("本月拜访"), value: data.stats.visitsThisMonth, icon: <CalendarOutlined />, color: "#2f855a", bg: "#eaf7ef" },
+        { label: t("本月订单"), value: data.stats.ordersThisMonth, icon: <ExportOutlined />, color: "#7c4d9e", bg: "#f3ecf8", href: `/orders?dateFrom=${dayjs().startOf("month").format("YYYY-MM-DD")}&dateTo=${dayjs().endOf("month").format("YYYY-MM-DD")}` },
+        { label: t("待出货"), value: data.stats.pendingShipment, icon: <TruckOutlined />, color: "#b45309", bg: "#fff0e0", href: "/orders?status=confirmed" },
+        { label: t("14 天内到港"), value: data.stats.arrivingSoon, icon: <TruckOutlined />, color: "#b73e3e", bg: "#fdecec", href: "/orders?arrivingSoon=1" },
       ]
     : [];
 
@@ -124,8 +126,8 @@ export function Dashboard() {
       ) : data ? (
         <>
           <div className={styles.stats}>
-            {statItems.map((item) => (
-              <Link key={item.label} href={item.href} className={styles.statLink}>
+            {statItems.map((item) => {
+              const card = (
                 <Card className={styles.statCard} styles={{ body: { padding: "12px 14px" } }}>
                   <div className={styles.statTop}>
                     <span className={styles.statLabel}>{item.label}</span>
@@ -133,8 +135,15 @@ export function Dashboard() {
                   </div>
                   <div className={styles.statValue}>{item.value}</div>
                 </Card>
-              </Link>
-            ))}
+              );
+              return item.href ? (
+                <Link key={item.label} href={item.href} className={styles.statLink}>
+                  {card}
+                </Link>
+              ) : (
+                <div key={item.label}>{card}</div>
+              );
+            })}
           </div>
           <div className={styles.charts}>
             <section className={styles.panel}>

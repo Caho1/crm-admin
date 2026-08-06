@@ -624,6 +624,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
               pageSize,
               total,
               showSizeChanger: false,
+              hideOnSinglePage: true,
               showTotal: (value) => t("共 {n} 条", { n: value }),
               onChange: (nextPage) => setPage(nextPage),
             }}

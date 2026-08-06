@@ -8,6 +8,7 @@ import {
   MenuOutlined,
   ProductOutlined,
   SettingOutlined,
+  ShoppingOutlined,
   TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
@@ -20,7 +21,7 @@ import { useLocale } from "./providers";
 import { UserProvider } from "./user-context";
 import styles from "./app-shell.module.css";
 
-const { Header, Sider, Content } = Layout;
+const { Header, Content } = Layout;
 
 function Brand() {
   const { t } = useLocale();
@@ -44,9 +45,9 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
   const menuItems = useMemo<MenuProps["items"]>(() => {
     const base: MenuProps["items"] = [
       { key: "/dashboard", icon: <DashboardOutlined />, label: t("工作台") },
-      // 拜访记录与订单都不单列菜单：两者天然绑定客户，
-      // 挂在客户档案页里，从客户进入是唯一入口
       { key: "/customers", icon: <TeamOutlined />, label: t("客户管理") },
+      // 拜访记录仍挂在客户档案页（天然绑定客户）；订单有全局管理页
+      { key: "/orders", icon: <ShoppingOutlined />, label: t("订单管理") },
       { key: "/products", icon: <ProductOutlined />, label: t("产品型号 / 牌号") },
     ];
     // 低频管理功能（人员权限 / 数据导入 / 操作日志）收进管理员专属的「设置」页
@@ -64,15 +65,9 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
     router.push(key);
   };
 
-  // 页面标题统一收到顶栏：按当前路由推导栏目名，
-  // 详情页（客户档案等）也归属对应栏目，页面内不再重复大标题
-  const sectionTitle = useMemo(() => {
-    if (pathname.startsWith("/dashboard")) return t("工作台");
-    if (pathname.startsWith("/customers")) return t("客户管理");
-    if (pathname.startsWith("/products")) return t("产品型号 / 牌号");
-    if (pathname.startsWith("/settings")) return t("设置");
-    return "";
-  }, [pathname, t]);
+  // 顶部横向导航：当前栏目由选中态表达；子页面（客户详情等）高亮所属栏目
+  const selectedKey =
+    ["/dashboard", "/customers", "/orders", "/products", "/settings"].find((key) => pathname.startsWith(key)) || pathname;
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -92,64 +87,61 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
     onClick: () => setLocale(option.value),
   }));
 
-  const menu = (
-    <Menu
-      className={styles.menu}
-      mode="inline"
-      selectedKeys={[pathname]}
-      items={menuItems}
-      onClick={onMenuClick}
-    />
-  );
-
   return (
     <UserProvider user={user}>
       <Layout className={styles.root}>
-        <Sider width={216} theme="light" className={styles.sider}>
-          <Brand />
-          {menu}
-        </Sider>
-        <Layout className={styles.body}>
-          <Header className={styles.header}>
-            <div className={styles.headerLeft}>
-              <Button
-                className={styles.mobileMenuButton}
-                type="text"
-                icon={<MenuOutlined />}
-                aria-label={t("打开导航")}
-                onClick={() => setMobileOpen(true)}
-              />
-              {sectionTitle ? <h1 className={styles.pageTitle}>{sectionTitle}</h1> : null}
-            </div>
-            <div className={styles.headerRight}>
-              <Dropdown
-                menu={{ items: localeMenu, selectedKeys: [locale] }}
-                trigger={["click"]}
-                placement="bottomRight"
-              >
-                <Button type="text" icon={<GlobalOutlined />} aria-label="Language">
-                  {localeOptions.find((option) => option.value === locale)?.label}
-                </Button>
-              </Dropdown>
-              <Dropdown menu={{ items: accountMenu }} trigger={["click"]} placement="bottomRight">
-                <div className={styles.userButton} role="button" tabIndex={0}>
-                  <Avatar size={34} style={{ background: user.role === "admin" ? "#1769aa" : "#2f855a" }}>
-                    {user.name.slice(0, 1)}
-                  </Avatar>
-                  <span className={styles.userMeta}>
-                    <span className={styles.userName}>{user.name}</span>
-                    <span className={styles.userRole}>{user.role === "admin" ? t("管理员") : t("普通用户")}</span>
-                  </span>
-                  <DownOutlined style={{ color: "#98a2b3", fontSize: 10 }} />
-                </div>
-              </Dropdown>
-            </div>
-          </Header>
-          <Content className={styles.content}>{children}</Content>
-        </Layout>
+        <Header className={styles.header}>
+          <div className={styles.headerLeft}>
+            <Button
+              className={styles.mobileMenuButton}
+              type="text"
+              icon={<MenuOutlined />}
+              aria-label={t("打开导航")}
+              onClick={() => setMobileOpen(true)}
+            />
+            <Brand />
+          </div>
+          <Menu
+            className={styles.topMenu}
+            mode="horizontal"
+            selectedKeys={[selectedKey]}
+            items={menuItems}
+            onClick={onMenuClick}
+          />
+          <div className={styles.headerRight}>
+            <Dropdown
+              menu={{ items: localeMenu, selectedKeys: [locale] }}
+              trigger={["click"]}
+              placement="bottomRight"
+            >
+              <Button type="text" icon={<GlobalOutlined />} aria-label="Language">
+                {localeOptions.find((option) => option.value === locale)?.label}
+              </Button>
+            </Dropdown>
+            <Dropdown menu={{ items: accountMenu }} trigger={["click"]} placement="bottomRight">
+              <div className={styles.userButton} role="button" tabIndex={0}>
+                <Avatar size={34} style={{ background: user.role === "admin" ? "#1769aa" : "#2f855a" }}>
+                  {user.name.slice(0, 1)}
+                </Avatar>
+                <span className={styles.userMeta}>
+                  <span className={styles.userName}>{user.name}</span>
+                  <span className={styles.userRole}>{user.role === "admin" ? t("管理员") : t("普通用户")}</span>
+                </span>
+                <DownOutlined style={{ color: "#98a2b3", fontSize: 10 }} />
+              </div>
+            </Dropdown>
+          </div>
+        </Header>
+        <Content className={styles.content}>{children}</Content>
         <Drawer open={mobileOpen} onClose={() => setMobileOpen(false)} placement="left" size={280} styles={{ body: { padding: 0 } }}>
           <div className={styles.drawerBrand}><Brand /></div>
-          {menu}
+          <Menu
+            className={styles.drawerMenu}
+            mode="inline"
+            selectedKeys={[selectedKey]}
+            items={menuItems}
+            onClick={onMenuClick}
+          />
         </Drawer>
       </Layout>
     </UserProvider>

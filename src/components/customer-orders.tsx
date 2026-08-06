@@ -1,9 +1,10 @@
 "use client";
 
 import { DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, RightOutlined } from "@ant-design/icons";
-import { App, Button, DatePicker, Descriptions, Drawer, Empty, Form, Input, InputNumber, Modal, Popconfirm, Select, Table, Tooltip, type TableProps } from "antd";
+import { App, Button, DatePicker, Descriptions, Drawer, Empty, Form, Input, InputNumber, Modal, Popconfirm, Select, Table, Tag, Tooltip, type TableProps } from "antd";
 import dayjs from "dayjs";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { useLocale } from "./providers";
@@ -14,6 +15,7 @@ import styles from "./customer-profile.module.css";
 type OrderRow = Record<string, unknown> & { id: number; canEdit?: number };
 type ProductOption = { id: number; label: string; status: string };
 type UserOption = { id: number; name: string };
+type CustomerOption = { id: number; name: string };
 
 const CURRENCIES = ["USD", "CNY", "KRW", "HKD"];
 // 履约概要按流程顺序汇总，一眼看出这个客户整体走到哪一步
@@ -30,9 +32,10 @@ function text(row: OrderRow | null, key: string) {
 }
 
 /**
- * 客户的订单记录。订单天然绑定客户，因此没有独立列表页。
- * compact 模式（客户档案页内）只显示关键列并每页 5 条，完整字段在
- * /customers/[id]/orders 子页展开——桌面端窗口不高，首页不能铺太长。
+ * 订单记录。两种形态：
+ * - 带 customerId：挂在客户档案下（compact 只留关键列，每页 5 条）
+ * - 不带 customerId：/orders 全局订单管理页，支持搜索与状态筛选，
+ *   新建时要先选客户
  */
 export function CustomerOrders({
   customerId,
@@ -41,8 +44,8 @@ export function CustomerOrders({
   isAdmin,
   compact = false,
 }: {
-  customerId: number;
-  customerName: string;
+  customerId?: number;
+  customerName?: string;
   canEdit: boolean;
   isAdmin: boolean;
   compact?: boolean;
@@ -50,8 +53,11 @@ export function CustomerOrders({
   const { t } = useLocale();
   const { message } = App.useApp();
   const [form] = Form.useForm();
+  const isGlobal = customerId === undefined;
   const pageSize = compact ? 5 : 10;
+  const searchParams = useSearchParams();
   const [rows, setRows] = useState<OrderRow[]>([]);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +65,13 @@ export function CustomerOrders({
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  // 全局页支持从工作台统计卡带筛选条件深链进来（待出货 / 14 天内到港）
+  const [searchInput, setSearchInput] = useState("");
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<string | undefined>(() => searchParams.get("status") || undefined);
+  const [arrivingSoon, setArrivingSoon] = useState(() => searchParams.get("arrivingSoon") === "1");
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get("dateFrom") || "");
+  const [dateTo, setDateTo] = useState(() => searchParams.get("dateTo") || "");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<OrderRow | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
@@ -68,10 +81,15 @@ export function CustomerOrders({
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        customerId: String(customerId),
         page: String(page),
         pageSize: String(pageSize),
       });
+      if (customerId !== undefined) params.set("customerId", String(customerId));
+      if (query) params.set("q", query);
+      if (status) params.set("status", status);
+      if (arrivingSoon) params.set("arrivingSoon", "1");
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
       const response = await apiFetch(`/api/orders?${params}`);
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message || "订单加载失败");
@@ -83,7 +101,7 @@ export function CustomerOrders({
     } finally {
       setLoading(false);
     }
-  }, [customerId, message, page, pageSize, t]);
+  }, [arrivingSoon, customerId, dateFrom, dateTo, message, page, pageSize, query, status, t]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -93,6 +111,7 @@ export function CustomerOrders({
         const response = await apiFetch("/api/lookups");
         const payload = await response.json();
         if (response.ok) {
+          setCustomers(payload.data.customers);
           setProducts(payload.data.products);
           setUsers(payload.data.users);
         }
@@ -125,7 +144,7 @@ export function CustomerOrders({
   const submit = async () => {
     try {
       const values = await form.validateFields();
-      const payload: Record<string, unknown> = { ...values, customerId };
+      const payload: Record<string, unknown> = { ...values, customerId: customerId ?? values.customerId };
       for (const key of ["orderDate", "lcTtDate", "actualShipmentDate", "expectedArrivalDate"]) {
         payload[key] = values[key] ? values[key].format("YYYY-MM-DD") : null;
       }
@@ -203,8 +222,24 @@ export function CustomerOrders({
     { title: t("负责人"), dataIndex: "ownerName", width: 90 },
   ];
 
+  const dataColumns = compact ? compactColumns : fullColumns;
   const columns: TableProps<OrderRow>["columns"] = [
-    ...(compact ? compactColumns : fullColumns),
+    // 全局页多一列客户，点击跳到对应客户档案
+    ...(isGlobal
+      ? [
+          dataColumns[0],
+          {
+            title: t("客户"),
+            dataIndex: "customerName",
+            width: 170,
+            ellipsis: true,
+            render: (value: unknown, row: OrderRow) => (
+              <Link href={`/customers/${row.customerId}`} className={resStyles.primaryCell}>{String(value || "-")}</Link>
+            ),
+          },
+          ...dataColumns.slice(1),
+        ]
+      : dataColumns),
     {
       title: t("操作"),
       key: "actions",
@@ -253,10 +288,10 @@ export function CustomerOrders({
   return (
     <section className={styles.section}>
       <div className={styles.sectionHead}>
-        <h2 className={styles.sectionTitle}>{t("订单记录")}</h2>
+        <h2 className={styles.sectionTitle}>{isGlobal ? t("订单管理") : t("订单记录")}</h2>
         <span className={styles.sectionCount}>{t("共 {n} 单", { n: total })}</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          {compact ? (
+          {compact && customerId !== undefined ? (
             <Link href={`/customers/${customerId}/orders`}>
               <Button size="small" icon={<RightOutlined />} iconPlacement="end">{t("展开全部")}</Button>
             </Link>
@@ -266,6 +301,36 @@ export function CustomerOrders({
           ) : null}
         </div>
       </div>
+
+      {isGlobal ? (
+        <div className={resStyles.toolbar}>
+          <Input.Search
+            className={resStyles.search}
+            allowClear
+            value={searchInput}
+            placeholder={t("订单号、客户、产品、合同号")}
+            onChange={(event) => setSearchInput(event.target.value)}
+            onSearch={(value) => { setQuery(value.trim()); setPage(1); setArrivingSoon(false); setDateFrom(""); setDateTo(""); }}
+          />
+          <Select
+            className={resStyles.filter}
+            allowClear
+            placeholder={t("全部状态")}
+            value={status}
+            options={orderStatuses}
+            onChange={(value) => { setStatus(value); setPage(1); setArrivingSoon(false); setDateFrom(""); setDateTo(""); }}
+          />
+          {/* 从工作台统计卡带进来的筛选条件，给个可见可关的标记，免得疑惑列表为什么这么短 */}
+          {arrivingSoon ? (
+            <Tag closable onClose={() => { setArrivingSoon(false); setPage(1); }}>{t("14 天内到港")}</Tag>
+          ) : null}
+          {dateFrom || dateTo ? (
+            <Tag closable onClose={() => { setDateFrom(""); setDateTo(""); setPage(1); }}>
+              {t("下单日期")}：{dateFrom || "…"} ~ {dateTo || "…"}
+            </Tag>
+          ) : null}
+        </div>
+      ) : null}
 
       {total > 0 ? (
         <div className={styles.summary}>
@@ -285,7 +350,7 @@ export function CustomerOrders({
           loading={loading}
           columns={columns}
           dataSource={rows}
-          scroll={{ x: compact ? 860 : 1720 }}
+          scroll={{ x: compact ? 860 : isGlobal ? 1890 : 1720 }}
           pagination={total > pageSize ? { current: page, pageSize, total, showSizeChanger: false, showTotal: (value) => t("共 {n} 条", { n: value }), onChange: setPage } : false}
           locale={{
             emptyText: (
@@ -298,7 +363,7 @@ export function CustomerOrders({
       </div>
 
       <Modal
-        title={`${editing ? t("编辑订单") : t("新建订单")} · ${customerName}`}
+        title={`${editing ? t("编辑订单") : t("新建订单")}${customerName ? ` · ${customerName}` : ""}`}
         open={modalOpen}
         centered
         width={860}
@@ -312,6 +377,16 @@ export function CustomerOrders({
       >
         <Form form={form} layout="vertical" requiredMark="optional" preserve={false} initialValues={initialValues}>
           <div className={resStyles.formGrid}>
+            {isGlobal ? (
+              <Form.Item name="customerId" label={t("客户")} rules={[{ required: true, message: t("{label}不能为空", { label: t("客户") }) }]}>
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  options={customers.map((item) => ({ value: item.id, label: item.name }))}
+                  placeholder={t("请选择{label}", { label: t("客户") })}
+                />
+              </Form.Item>
+            ) : null}
             <Form.Item name="orderNo" label={t("订单编号")}><Input placeholder={t("留空自动生成")} /></Form.Item>
             <Form.Item name="status" label={t("履约状态")} rules={[{ required: true, message: t("{label}不能为空", { label: t("履约状态") }) }]}>
               <Select options={orderStatuses} />
@@ -365,7 +440,7 @@ export function CustomerOrders({
         {detail ? (
           <>
             <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
-              <Descriptions.Item label={t("客户")}>{customerName}</Descriptions.Item>
+              <Descriptions.Item label={t("客户")}>{customerName ?? text(detail, "customerName")}</Descriptions.Item>
               <Descriptions.Item label={t("履约状态")}><StatusTag value={String(detail.status)} /></Descriptions.Item>
               <Descriptions.Item label={t("下单日期")}>{text(detail, "orderDate")}</Descriptions.Item>
               <Descriptions.Item label={t("产品型号 / 牌号")}>{detail.grade ? `${detail.className} / ${detail.grade}` : "-"}</Descriptions.Item>

@@ -131,7 +131,7 @@ export function DataCenter() {
                 {result.errors.map((error) => <li key={`${error.row}-${error.message}`}>{t("第 {row} 行", { row: error.row })}：{error.message}</li>)}
               </ul>
             ) : result.preview?.length ? (
-              <Table rowKey="orderNo" size="small" columns={previewColumns} dataSource={result.preview} pagination={false} scroll={{ x: 1000 }} />
+              <Table rowKey="orderNo" size="small" columns={previewColumns} dataSource={result.preview} pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }} scroll={{ x: 1000 }} />
             ) : (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("没有可预览的数据")} />
             )}

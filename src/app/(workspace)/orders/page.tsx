@@ -1,7 +1,11 @@
-import { redirect } from "next/navigation";
+import { CustomerOrders } from "@/components/customer-orders";
+import { requirePageUser } from "@/lib/auth";
 
-// 订单已并入客户档案页（订单天然绑定客户），不再有独立列表。
-// 保留这条路由做重定向，避免旧书签和历史链接落到 404。
-export default function OrdersPage() {
-  redirect("/customers");
+export const metadata = { title: "订单管理" };
+
+// 全局订单管理页：跨客户查看/筛选所有订单。
+// 客户档案页内的订单区块复用同一组件（传 customerId 即为单客户模式）。
+export default async function OrdersPage() {
+  const user = await requirePageUser();
+  return <CustomerOrders canEdit isAdmin={user.role === "admin"} />;
 }

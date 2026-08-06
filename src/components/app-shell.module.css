@@ -2,20 +2,10 @@
   min-height: 100vh;
 }
 
-.sider {
-  position: fixed !important;
-  inset: 0 auto 0 0;
-  z-index: 20;
-  height: 100vh;
-  border-right: 1px solid var(--border);
-}
-
 .brand {
   display: flex;
   align-items: center;
   height: 64px;
-  padding: 0 18px;
-  border-bottom: 1px solid var(--border);
   gap: 10px;
 }
 
@@ -51,14 +41,9 @@
   line-height: 16px;
 }
 
-.menu {
+.drawerMenu {
   padding-top: 12px;
   border-inline-end: 0 !important;
-}
-
-.body {
-  min-height: 100vh;
-  margin-left: 216px;
 }
 
 .header {
@@ -67,7 +52,7 @@
   z-index: 15;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 28px;
   height: 64px;
   padding: 0 24px !important;
   border-bottom: 1px solid var(--border);
@@ -81,14 +66,12 @@
   gap: 12px;
 }
 
-/* 顶栏里的当前栏目名，替代原来页面内的大标题 */
-.pageTitle {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
+/* 顶部横向导航：占满中间剩余空间，去掉 antd 默认下划线 */
+.topMenu {
+  flex: 1;
+  min-width: 0;
+  border-bottom: none !important;
+  background: transparent;
 }
 
 .mobileMenuButton {
@@ -99,6 +82,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-left: auto;
 }
 
 .userButton {
@@ -136,12 +120,9 @@
 }
 
 @media (max-width: 900px) {
-  .sider {
+  /* 窄屏隐藏横向导航，改用抽屉菜单；多套一层 .header 压过 antd 的 display:flex */
+  .header .topMenu {
     display: none;
-  }
-
-  .body {
-    margin-left: 0;
   }
 
   .mobileMenuButton {

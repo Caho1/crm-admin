@@ -1,5 +1,8 @@
+/* 外壳占满视口且不滚，滚动只发生在内容区：
+   滚动条就不会越过顶部菜单栏 */
 .root {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .brand {
@@ -46,10 +49,8 @@
   border-inline-end: 0 !important;
 }
 
+/* 顶栏不参与滚动（滚动容器是内容区），无需 sticky */
 .header {
-  position: sticky;
-  top: 0;
-  z-index: 15;
   display: flex;
   align-items: center;
   gap: 28px;
@@ -114,7 +115,9 @@
 }
 
 .content {
-  min-height: calc(100vh - 64px);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 22px 24px 32px;
 }
 

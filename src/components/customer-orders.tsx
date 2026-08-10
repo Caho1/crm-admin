@@ -19,7 +19,7 @@ type CustomerOption = { id: number; name: string };
 
 const CURRENCIES = ["USD", "CNY", "KRW", "HKD"];
 // 履约概要按流程顺序汇总，一眼看出这个客户整体走到哪一步
-const STATUS_FLOW = ["planned", "confirmed", "shipped", "arrived"] as const;
+export const STATUS_FLOW = ["planned", "confirmed", "shipped", "arrived"] as const;
 
 function formatNumber(value: unknown) {
   if (value === null || value === undefined || value === "") return "-";
@@ -43,12 +43,15 @@ export function CustomerOrders({
   canEdit,
   isAdmin,
   compact = false,
+  onChanged,
 }: {
   customerId?: number;
   customerName?: string;
   canEdit: boolean;
   isAdmin: boolean;
   compact?: boolean;
+  /** 订单增删改成功后回调，客户档案页用它刷新页头的履约概要 */
+  onChanged?: () => void;
 }) {
   const { t } = useLocale();
   const { message } = App.useApp();
@@ -165,6 +168,7 @@ export function CustomerOrders({
       message.success(editing ? t("保存成功") : t("创建成功"));
       setModalOpen(false);
       await load();
+      onChanged?.();
     } catch (error) {
       if (error instanceof Error && error.message) message.error(t(error.message));
     } finally {
@@ -180,6 +184,7 @@ export function CustomerOrders({
       message.success(t("记录已删除"));
       if (rows.length === 1 && page > 1) setPage(page - 1);
       else await load();
+      onChanged?.();
     } catch (error) {
       message.error(t(error instanceof Error ? error.message : "删除失败"));
     }
@@ -332,7 +337,8 @@ export function CustomerOrders({
         </div>
       ) : null}
 
-      {total > 0 ? (
+      {/* compact（客户档案页嵌入）时概要已挪到页头，这里不再重复展示 */}
+      {!compact && total > 0 ? (
         <div className={styles.summary}>
           {STATUS_FLOW.map((status) => (
             <div key={status} className={styles.summaryChip}>

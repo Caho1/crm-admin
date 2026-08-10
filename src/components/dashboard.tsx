@@ -3,14 +3,12 @@
 import {
   CalendarOutlined,
   ExportOutlined,
-  PlusOutlined,
   TeamOutlined,
   TruckOutlined,
 } from "@ant-design/icons";
 import { App, Button, Card, Empty, Segmented, Skeleton } from "antd";
 import dayjs from "dayjs";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { useLocale } from "./providers";
@@ -52,7 +50,6 @@ function formatTrendBucket(bucket: string, granularity: TrendGranularity) {
 }
 
 export function Dashboard() {
-  const router = useRouter();
   const { t, locale } = useLocale();
   const { message } = App.useApp();
   const [data, setData] = useState<DashboardData | null>(null);
@@ -125,15 +122,6 @@ export function Dashboard() {
 
   return (
     <div>
-      {/* 栏目名已由顶栏展示，这里只留日期和新建入口 */}
-      <div className={styles.pageHeader}>
-        <div className={styles.pageHeaderRight}>
-          <span className={styles.date}>{dayjs().format(t("YYYY年M月D日 dddd"))}</span>
-          {/* 主按钮保持一个（新建客户），新建订单做旁路，避免两个 primary 抢焦点 */}
-          <Button icon={<PlusOutlined />} onClick={() => router.push("/orders")}>{t("新建订单")}</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => router.push("/customers?create=1")}>{t("新建客户")}</Button>
-        </div>
-      </div>
       {loading && !data ? (
         <Skeleton active paragraph={{ rows: 8 }} />
       ) : data ? (

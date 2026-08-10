@@ -7,11 +7,11 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { dictLabelOf, type DictMap } from "@/lib/dicts";
 import { CustomerEditModal } from "./customer-form";
-import { CustomerOrders } from "./customer-orders";
+import { CustomerOrders, STATUS_FLOW } from "./customer-orders";
 import { CustomerVisits } from "./customer-visits";
 import { useLocale } from "./providers";
 import { useCurrentUser } from "./user-context";
-import { StatusTag } from "./status-tag";
+import { StatusTag, statusLabel } from "./status-tag";
 import resStyles from "./resource-page.module.css";
 import styles from "./customer-profile.module.css";
 
@@ -20,6 +20,7 @@ type Detail = {
   contacts: Array<Record<string, string | number>>;
   members: Array<Record<string, string | number>>;
   canEdit?: boolean;
+  orderStatusCounts?: Record<string, number>;
 };
 
 export function CustomerProfile({ id }: { id: number }) {
@@ -31,8 +32,9 @@ export function CustomerProfile({ id }: { id: number }) {
   const [error, setError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // silent：只刷新数据（如订单增删改后同步页头履约概要），不闪骨架屏
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const response = await apiFetch(`/api/customers/${id}`);
@@ -42,7 +44,7 @@ export function CustomerProfile({ id }: { id: number }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "客户详情加载失败");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [id]);
 
@@ -79,29 +81,46 @@ export function CustomerProfile({ id }: { id: number }) {
   const location = [customer.country, customer.region].filter(Boolean).join(" / ");
   const categoryLabel = dictLabelOf(dicts.customer_category, String(customer.category || ""), locale);
   const industryLabel = dictLabelOf(dicts.industry, String(customer.industry || ""), locale);
+  const orderStatusCounts = data.orderStatusCounts || {};
+  const orderTotal = Object.values(orderStatusCounts).reduce((sum, count) => sum + count, 0);
 
   return (
     <div className={styles.page}>
       <Link href="/customers" className={styles.back}><ArrowLeftOutlined /> {t("返回客户列表")}</Link>
 
       <div className={styles.header}>
-        <div className={styles.titleGroup}>
-          <h1 className={styles.title}>{customer.name}</h1>
-          <StatusTag value={String(customer.status)} label={{ potential: "潜在客户", active: "活跃客户", inactive: "已停用" }[String(customer.status)]} />
-          {categoryLabel ? <Tag color="blue">{categoryLabel}</Tag> : null}
-        </div>
-        {customer.nameEn ? <div className={styles.nameEn}>{customer.nameEn}</div> : null}
-        <div className={styles.headerMeta}>
-          <span><b>{t("负责人")}</b> {customer.ownerName}</span>
-          {location ? <span><b>{t("国家 / 地区")}</b> {location}</span> : null}
-          {industryLabel ? <span><b>{t("行业")}</b> {industryLabel}</span> : null}
-        </div>
-        {/* 详情页主操作：有编辑权限时就地开编辑弹窗，不跳回列表页 */}
-        {data.canEdit !== false ? (
-          <div className={styles.headerActions}>
-            <Button type="primary" icon={<EditOutlined />} onClick={() => setEditOpen(true)}>{t("编辑客户")}</Button>
+        <div className={styles.headerMain}>
+          <div className={styles.titleGroup}>
+            <h1 className={styles.title}>{customer.name}</h1>
+            <StatusTag value={String(customer.status)} label={{ potential: "潜在客户", active: "活跃客户", inactive: "已停用" }[String(customer.status)]} />
+            {categoryLabel ? <Tag color="blue">{categoryLabel}</Tag> : null}
           </div>
-        ) : null}
+          {customer.nameEn ? <div className={styles.nameEn}>{customer.nameEn}</div> : null}
+          <div className={styles.headerMeta}>
+            <span><b>{t("负责人")}</b> {customer.ownerName}</span>
+            {location ? <span><b>{t("国家 / 地区")}</b> {location}</span> : null}
+            {industryLabel ? <span><b>{t("行业")}</b> {industryLabel}</span> : null}
+          </div>
+        </div>
+        <div className={styles.headerSide}>
+          {/* 订单履约概要放在页头右侧，打开档案第一眼就能看到整体进度 */}
+          {orderTotal > 0 ? (
+            <div className={styles.summary}>
+              {STATUS_FLOW.map((status) => (
+                <div key={status} className={styles.summaryChip}>
+                  <span className={styles.summaryNum}>{orderStatusCounts[status] || 0}</span>
+                  <span className={styles.summaryLabel}>{t(statusLabel(status))}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {/* 详情页主操作：有编辑权限时就地开编辑弹窗，不跳回列表页 */}
+          {data.canEdit !== false ? (
+            <div className={styles.headerActions}>
+              <Button type="primary" icon={<EditOutlined />} onClick={() => setEditOpen(true)}>{t("编辑客户")}</Button>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {/* 名称 / 状态 / 分类 / 负责人 / 国家地区 / 行业 都已在页头呈现，
@@ -149,6 +168,7 @@ export function CustomerProfile({ id }: { id: number }) {
                 canEdit={data.canEdit !== false}
                 isAdmin={currentUser.role === "admin"}
                 compact
+                onChanged={() => void load(true)}
               />
             ),
           },

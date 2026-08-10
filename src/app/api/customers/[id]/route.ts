@@ -30,7 +30,13 @@ export async function GET(_request: Request, context: Context) {
       JOIN users u ON u.id = cm.user_id WHERE cm.customer_id = ? ORDER BY u.name
     `).all(id);
     // 拜访列表由客户页内的 CustomerVisits 自行分页拉取（/api/visits?customerId=），此处不再内联
-    return ok({ customer, contacts, members, canEdit });
+    // 订单履约概要随详情一次返回，页头直接展示，不依赖订单列表接口
+    const orderStatusRows = db.prepare(`
+      SELECT status, COUNT(*) AS count FROM orders
+      WHERE customer_id = ? AND deleted_at IS NULL GROUP BY status
+    `).all(id) as Array<{ status: string; count: number }>;
+    const orderStatusCounts = Object.fromEntries(orderStatusRows.map((row) => [row.status, row.count]));
+    return ok({ customer, contacts, members, canEdit, orderStatusCounts });
   } catch (error) {
     return handleApiError(error);
   }

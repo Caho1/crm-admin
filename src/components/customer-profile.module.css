@@ -25,6 +25,24 @@
   margin-bottom: 20px;
 }
 
+/* 左侧列：名称 / 标签 / 负责人等元信息 */
+.headerMain {
+  min-width: 0;
+}
+
+/* 右侧列：订单履约概要 + 主操作按钮，右对齐竖排 */
+.headerSide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.headerSide .summary {
+  margin-bottom: 0;
+}
+
 .titleGroup {
   display: flex;
   align-items: center;
@@ -47,12 +65,10 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
 }
 
 /* 英文名紧跟中文名下方，弱化字重避免和主标题抢焦点 */
 .nameEn {
-  flex-basis: 100%;
   margin-top: 4px;
   color: #6b7688;
   font-size: 14px;
@@ -63,6 +79,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px 16px;
+  margin-top: 8px;
   color: #6b7688;
   font-size: 13.5px;
 }

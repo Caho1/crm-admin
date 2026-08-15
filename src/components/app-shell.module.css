@@ -119,6 +119,9 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* 始终留出滚动条槽位：否则内容长的页面出滚动条、内容短的页面又收掉，
+     切页签 / 换页时整块内容会左右抖 15px */
+  scrollbar-gutter: stable;
   padding: 22px 24px 32px;
 }
 

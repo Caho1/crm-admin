@@ -292,60 +292,12 @@
   margin: 28px auto;
 }
 
-/* 竞品列表：按我方产品分组，一组一张小表 */
-.competitorList {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.competitorHead {
+/* 竞品列表的首列：产品牌号 + 该客户的下单数，合并单元格后纵向居中 */
+.competitorProduct {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-  font-size: 13.5px;
-}
-
-.competitorTable {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13.5px;
-}
-
-.competitorTable th {
-  padding: 8px 12px;
-  border-bottom: 1px solid #e9edf3;
-  background: #f7f9fc;
-  color: #475467;
-  font-weight: 650;
-  text-align: left;
+  gap: 8px;
   white-space: nowrap;
-}
-
-.competitorTable td {
-  padding: 9px 12px;
-  border-bottom: 1px solid #f2f4f7;
-  color: #344054;
-  vertical-align: top;
-}
-
-.competitorTable tr:last-child td {
-  border-bottom: none;
-}
-
-.competitorGrade {
-  color: #101828;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.competitorEmpty {
-  padding: 12px;
-  border: 1px dashed #d0d5dd;
-  border-radius: 8px;
-  color: #98a2b3;
-  font-size: 13px;
 }
 
 @media (max-width: 1100px) {

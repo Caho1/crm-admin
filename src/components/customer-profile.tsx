@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowLeftOutlined, DeleteOutlined, EditOutlined, MailOutlined, PhoneOutlined } from "@ant-design/icons";
-import { App, Button, Empty, Image, Skeleton, Tabs, Tag } from "antd";
+import { App, Button, Empty, Image, Skeleton, Table, Tabs, Tag, type TableProps } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -90,45 +90,100 @@ function ContactList({ contacts, customerId, version }: { contacts: Contact[]; c
  */
 function CompetitorList({ products }: { products: CompetitorProduct[] }) {
   const { t } = useLocale();
-  if (!products.length) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("该客户还没有关联的产品")} />;
+
+  // 拍平成表格行：同一个我方产品的多条竞品用 rowSpan 合并首列，
+  // 没登记竞品的产品占一行，提示文案横跨后三列
+  type Row = {
+    key: string;
+    className: string;
+    grade: string;
+    orderCount: number;
+    span: number;
+    competitorGrade: string;
+    manufacturer: string;
+    notes: string;
+    empty?: boolean;
+  };
+  const rows: Row[] = [];
+  for (const product of products) {
+    const base = { className: product.className, grade: product.grade, orderCount: product.orderCount };
+    if (!product.competitors.length) {
+      rows.push({ key: `p${product.id}`, ...base, span: 1, competitorGrade: "", manufacturer: "", notes: "", empty: true });
+      continue;
+    }
+    product.competitors.forEach((item, index) => {
+      rows.push({
+        key: `c${item.id}`,
+        ...base,
+        span: index === 0 ? product.competitors.length : 0,
+        competitorGrade: item.grade,
+        manufacturer: item.manufacturer,
+        notes: item.notes,
+      });
+    });
   }
+
+  const dash = <span className={resStyles.muted}>-</span>;
+  const columns: TableProps<Row>["columns"] = [
+    {
+      title: t("我方产品"),
+      dataIndex: "grade",
+      width: 190,
+      onCell: (row) => ({ rowSpan: row.span }),
+      render: (_value, row) => (
+        <div className={styles.competitorProduct}>
+          <span className={resStyles.product}>
+            <span className={resStyles.productClass}>{row.className}</span>
+            {row.grade}
+          </span>
+          {row.orderCount ? <span className={resStyles.muted}>{t("{n} 单", { n: row.orderCount })}</span> : null}
+        </div>
+      ),
+    },
+    {
+      title: t("竞争型号"),
+      dataIndex: "competitorGrade",
+      width: 170,
+      // 未登记竞品的产品：提示文案占满剩下三列
+      onCell: (row) => (row.empty ? { colSpan: 3 } : {}),
+      render: (value, row) =>
+        row.empty
+          ? <span className={resStyles.muted}>{t("该产品尚未登记竞争型号，可在「产品型号」里补充")}</span>
+          : <span className={resStyles.primaryCellStatic}>{String(value)}</span>,
+    },
+    {
+      title: t("生产商"),
+      dataIndex: "manufacturer",
+      width: 160,
+      onCell: (row) => (row.empty ? { colSpan: 0 } : {}),
+      render: (value) => String(value || "") || dash,
+    },
+    {
+      title: t("备注"),
+      dataIndex: "notes",
+      onCell: (row) => (row.empty ? { colSpan: 0 } : {}),
+      render: (value) => String(value || "") || dash,
+    },
+  ];
+
   return (
-    <div className={styles.competitorList}>
-      {products.map((product) => (
-        <section key={product.id} className={styles.competitorGroup}>
-          <div className={styles.competitorHead}>
-            <span className={resStyles.product}>
-              <span className={resStyles.productClass}>{product.className}</span>
-              {product.grade}
-            </span>
-            {product.orderCount ? <span className={resStyles.muted}>{t("{n} 单", { n: product.orderCount })}</span> : null}
-          </div>
-          {product.competitors.length ? (
-            <table className={styles.competitorTable}>
-              <thead>
-                <tr>
-                  <th>{t("竞争型号")}</th>
-                  <th>{t("生产商")}</th>
-                  <th>{t("备注")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {product.competitors.map((item) => (
-                  <tr key={item.id}>
-                    <td className={styles.competitorGrade}>{item.grade}</td>
-                    <td>{item.manufacturer || <span className={resStyles.muted}>-</span>}</td>
-                    <td>{item.notes || <span className={resStyles.muted}>-</span>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className={styles.competitorEmpty}>{t("该产品尚未登记竞争型号，可在「产品型号」里补充")}</div>
-          )}
-        </section>
-      ))}
-    </div>
+    <section className={styles.section}>
+      <div className={styles.sectionHead}>
+        <h2 className={styles.sectionTitle}>{t("竞品列表")}</h2>
+        <span className={styles.sectionCount}>{t("共 {n} 条", { n: rows.filter((row) => !row.empty).length })}</span>
+      </div>
+      <div className={styles.tableFrame}>
+        <Table<Row>
+          rowKey="key"
+          size="middle"
+          columns={columns}
+          dataSource={rows}
+          pagination={false}
+          scroll={{ x: 760 }}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("该客户还没有关联的产品")} /> }}
+        />
+      </div>
+    </section>
   );
 }
 

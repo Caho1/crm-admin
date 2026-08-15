@@ -1,9 +1,9 @@
 // 可配置下拉选项（标签）的类型登记表。
 // 新增一类标签只需在这里加一行：设置页的分组、表单下拉、列表筛选会自动跟着出现。
+// 「行业」曾经也是一类标签，现已改为客户表单里手动输入，不再需要维护选项。
 export const DICT_TYPES = [
-  { type: "customer_category", label: "客户分类", hint: "工厂 / 贸易商 / 工贸一体" },
-  { type: "product_class", label: "产品大类 / 材料分类", hint: "PP / PE / PC / EVA" },
-  { type: "industry", label: "行业", hint: "客户所属行业" },
+  { type: "customer_category", label: "客户分类" },
+  { type: "product_class", label: "产品大类 / 材料分类" },
 ] as const;
 
 export type DictType = (typeof DICT_TYPES)[number]["type"];

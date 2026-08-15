@@ -43,7 +43,7 @@ function ImportPanel({ config }: { config: PanelConfig }) {
   const upload = async (commit: boolean) => {
     const file = fileList[0]?.originFileObj;
     if (!file) {
-      message.warning(t("请先选择 Excel 文件"));
+      message.warning(t("请先选择导入文件"));
       return;
     }
     if (commit) setImporting(true);
@@ -88,7 +88,7 @@ function ImportPanel({ config }: { config: PanelConfig }) {
         <div className={styles.sectionBody}>
           <Upload.Dragger
             className={styles.upload}
-            accept=".xlsx"
+            accept=".xlsx,.csv"
             maxCount={1}
             fileList={fileList}
             beforeUpload={() => false}
@@ -169,12 +169,13 @@ export function DataCenter() {
     endpoint: "/api/data/customers-import",
     templateHref: "/api/data/customers-template",
     templateLabel: t("下载客户模板"),
-    uploadText: t("选择或拖入客户 Excel"),
-    hint: t("支持 .xlsx，单个文件不超过 5MB；同名客户按名称匹配并更新，留空的列保持原值"),
+    uploadText: t("选择或拖入客户 Excel / CSV"),
+    hint: t("支持 .xlsx / .csv，单个文件不超过 5MB；同名客户按名称匹配并更新，留空的列保持原值；联系人只导入第一位，名片图片请在客户档案里上传"),
     rowKey: (row, index) => `${String(row.name ?? "")}-${index}`,
     columns: [
       modeColumn,
       { title: t("客户名称"), dataIndex: "name", width: 200, ellipsis: true },
+      { title: t("简称"), dataIndex: "shortName", width: 110, ellipsis: true, render: (value) => String(value || "-") },
       { title: t("英文名称"), dataIndex: "nameEn", width: 190, ellipsis: true, render: (value) => String(value || "-") },
       { title: t("客户分类"), dataIndex: "category", width: 110, render: (value) => String(value || "-") },
       { title: t("行业"), dataIndex: "industry", width: 110, render: (value) => String(value || "-") },
@@ -190,8 +191,8 @@ export function DataCenter() {
     exportHref: "/api/data/orders-export",
     templateLabel: t("下载订单模板"),
     exportLabel: t("导出全部订单"),
-    uploadText: t("选择或拖入订单 Excel"),
-    hint: t("支持 .xlsx，单个文件不超过 5MB；订单编号已存在的行会更新该订单，留空的列保持原值"),
+    uploadText: t("选择或拖入订单 Excel / CSV"),
+    hint: t("支持 .xlsx / .csv，单个文件不超过 5MB；订单编号已存在的行会更新该订单，留空的列保持原值"),
     rowKey: (row, index) => `${String(row.orderNo ?? "")}-${index}`,
     columns: [
       modeColumn,

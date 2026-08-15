@@ -1,0 +1,120 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+/* 分区标题与「基本信息」「联系人」同一套样式（左侧主色竖条） */
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #101828;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sectionTitle::before {
+  content: "";
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--primary);
+}
+
+.count {
+  color: #98a2b3;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.empty {
+  padding: 14px;
+  border: 1px dashed #d0d5dd;
+  border-radius: 8px;
+  color: #98a2b3;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* 竞品条数可能几十条，改成表格式排布：一行一条，列头只出一次。
+   左侧留出与上方字段标签列等宽的空档（84px + 26px 序号列 + 8px 列间距 = 118px），
+   输入框与「产品大类」等控件左边缘对齐 */
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 84px;
+  /* 条数多时列表内部滚动，弹窗底部的保存按钮不会被顶走 */
+  max-height: 320px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 32px;
+  align-items: start;
+  column-gap: 8px;
+}
+
+.head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 2px 0 4px;
+  background: #fff;
+  color: #475467;
+  font-size: 13px;
+}
+
+.headCell {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.required::after {
+  content: " *";
+  color: #d92d20;
+}
+
+.index {
+  padding-top: 6px;
+  color: #98a2b3;
+  font-size: 12px;
+  text-align: right;
+}
+
+.row :global(.ant-form-item) {
+  margin-bottom: 0;
+}
+
+.remove {
+  margin-top: 1px;
+}
+
+@media (max-width: 640px) {
+  /* 窄屏没有多余横向空间，取消与标签列对齐的留白 */
+  .rows {
+    padding-left: 0;
+  }
+
+  .row {
+    grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr) 32px;
+  }
+
+  /* 窄屏放不下备注列，隐藏它（备注仍可在宽屏编辑） */
+  .notes {
+    display: none;
+  }
+}

@@ -265,8 +265,17 @@ export function CustomerVisits({
         styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "auto", paddingRight: 4 } }}
       >
         {/* destroyOnHidden 保证每次打开重新挂载，initialValues 在首帧即生效，避免先空后填的闪烁 */}
-        <Form form={form} layout="vertical" requiredMark="optional" preserve={false} initialValues={initialValues}>
+        <Form
+          form={form}
+          layout="horizontal"
+          labelCol={{ flex: "132px" }}
+          wrapperCol={{ flex: "auto" }}
+          requiredMark={false}
+          preserve={false}
+          initialValues={initialValues}
+        >
           <div className={resStyles.formGrid}>
+            <div className={`${resStyles.fieldFull} ${resStyles.sectionTitle}`}>{t("基本信息")}</div>
             <Form.Item name="reportNo" label={t("报告编号")}>
               <Input placeholder={t("留空自动生成")} />
             </Form.Item>
@@ -288,7 +297,7 @@ export function CustomerVisits({
             <Form.Item name="internalParticipants" label={t("我方参加人员")}>
               <Input placeholder={t("请输入{label}", { label: t("我方参加人员") })} />
             </Form.Item>
-            <Form.Item className={resStyles.fieldFull} name="productIds" label={t("关联产品型号 / 牌号")}>
+            <Form.Item className={resStyles.fieldFull} name="productIds" label={t("关联产品")}>
               <Select
                 mode="multiple"
                 showSearch
@@ -296,12 +305,13 @@ export function CustomerVisits({
                 maxTagCount="responsive"
                 optionFilterProp="label"
                 options={productOptions}
-                placeholder={t("请选择{label}", { label: t("关联产品型号 / 牌号") })}
+                placeholder={t("请选择{label}", { label: t("关联产品") })}
               />
             </Form.Item>
             <Form.Item className={resStyles.fieldFull} name="customerParticipants" label={t("客户方参加人员")}>
               <Input placeholder={t("请输入{label}", { label: t("客户方参加人员") })} />
             </Form.Item>
+            <div className={`${resStyles.fieldFull} ${resStyles.sectionTitle}`}>{t("报告内容")}</div>
             <Form.Item className={resStyles.fieldFull} name="companyProfile" label={t("客户公司简介")}>
               <Input.TextArea rows={2} showCount maxLength={3000} />
             </Form.Item>
@@ -311,7 +321,7 @@ export function CustomerVisits({
             <Form.Item className={resStyles.fieldFull} name="followUp" label={t("后续跟进事项")}>
               <Input.TextArea rows={3} showCount maxLength={3000} />
             </Form.Item>
-            <Form.Item className={resStyles.fieldFull} label={t("拜访记录文件（docx）")}>
+            <Form.Item className={resStyles.fieldFull} label={t("附件（docx）")}>
               {/* 手动上传：先选文件，随表单保存一起提交；重复选择会替换 */}
               <Upload
                 accept=".docx"

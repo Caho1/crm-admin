@@ -1,6 +1,7 @@
 import { getDb } from "@/db/client";
 import { ApiError, handleApiError, integerId, ok, parseBody, requireApiAdmin } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
+import { saveCompetitors } from "@/lib/products";
 import { productSchema } from "@/lib/validation";
 
 type Context = { params: Promise<{ id: string }> };
@@ -15,10 +16,13 @@ export async function PUT(request: Request, context: Context) {
     if (db.prepare("SELECT id FROM products WHERE class_name = ? COLLATE NOCASE AND grade = ? COLLATE NOCASE AND id <> ?").get(input.className, input.grade, id)) {
       throw new ApiError(409, "DUPLICATE_PRODUCT", "该产品大类和型号/牌号已存在");
     }
-    db.prepare(`
-      UPDATE products SET class_name = ?, grade = ?, brand = ?, supplier = ?,
-        application = ?, notes = ?, status = ?, updated_at = datetime('now') WHERE id = ?
-    `).run(input.className, input.grade, input.brand, input.supplier, input.application, input.notes, input.status, id);
+    db.transaction(() => {
+      db.prepare(`
+        UPDATE products SET class_name = ?, grade = ?, brand = ?, supplier = ?,
+          application = ?, notes = ?, status = ?, updated_at = datetime('now') WHERE id = ?
+      `).run(input.className, input.grade, input.brand, input.supplier, input.application, input.notes, input.status, id);
+      saveCompetitors(db, id, input.competitors);
+    })();
     writeAudit(user.id, "update", "product", id, `更新产品 ${input.className} / ${input.grade}`);
     return ok({ id });
   } catch (error) {

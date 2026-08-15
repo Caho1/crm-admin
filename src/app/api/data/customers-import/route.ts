@@ -2,13 +2,16 @@ import ExcelJS from "exceljs";
 import { getDb } from "@/db/client";
 import { ApiError, handleApiError, ok, requireApiAdmin } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
-import { customerHeaderAliases, normalizeHeader } from "@/lib/excel";
+import { IMPORT_FILE_PATTERN, customerHeaderAliases, normalizeHeader, readUploadWorksheet } from "@/lib/excel";
 
 export const runtime = "nodejs";
 
 /** Excel 列 → customers 表列，值只在单元格非空时写入（留空即不改） */
 const TEXT_FIELDS: Array<{ field: string; column: string; label: string; max: number }> = [
   { field: "nameEn", column: "name_en", label: "客户名称（英文）", max: 160 },
+  { field: "shortName", column: "short_name", label: "客户简称", max: 80 },
+  // 行业是手填字段，按原文入库，不再校验是否在标签配置里
+  { field: "industry", column: "industry", label: "行业", max: 120 },
   { field: "country", column: "country", label: "国家", max: 80 },
   { field: "region", column: "region", label: "地区", max: 80 },
   { field: "address", column: "address", label: "详细地址", max: 240 },
@@ -35,10 +38,9 @@ type ImportedCustomer = {
   /** customers 表列 → 值，只含文件里填了的列 */
   columns: Record<string, string>;
   ownerId: number | null;
-  contact: { name: string; title: string; phone: string; email: string } | null;
+  contact: { name: string; nameEn: string; title: string; phone: string; email: string; personality: string } | null;
   // 预检表格展示用
   categoryLabel: string;
-  industryLabel: string;
   ownerName: string;
   status: string;
 };
@@ -77,14 +79,12 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const file = form.get("file");
     const commit = form.get("commit") === "true";
-    if (!(file instanceof File)) throw new ApiError(400, "FILE_REQUIRED", "请选择 Excel 文件");
-    if (file.size > 5 * 1024 * 1024) throw new ApiError(413, "FILE_TOO_LARGE", "Excel 文件不能超过 5MB");
-    if (!/\.xlsx$/i.test(file.name)) throw new ApiError(422, "INVALID_FILE_TYPE", "仅支持 .xlsx 文件");
+    if (!(file instanceof File)) throw new ApiError(400, "FILE_REQUIRED", "请选择导入文件");
+    if (file.size > 5 * 1024 * 1024) throw new ApiError(413, "FILE_TOO_LARGE", "导入文件不能超过 5MB");
+    if (!IMPORT_FILE_PATTERN.test(file.name)) throw new ApiError(422, "INVALID_FILE_TYPE", "仅支持 .xlsx 或 .csv 文件");
 
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(Buffer.from(await file.arrayBuffer()) as never);
-    const worksheet = workbook.worksheets[0];
-    if (!worksheet || worksheet.rowCount < 2) throw new ApiError(422, "EMPTY_SHEET", "Excel 中没有可导入的数据");
+    const worksheet = await readUploadWorksheet(file);
+    if (!worksheet || worksheet.rowCount < 2) throw new ApiError(422, "EMPTY_SHEET", "文件中没有可导入的数据");
 
     const headerRow = worksheet.getRow(1);
     const mapping: Record<string, number> = {};
@@ -98,7 +98,6 @@ export async function POST(request: Request) {
 
     const db = getDb();
     const resolveCategory = dictResolver("customer_category");
-    const resolveIndustry = dictResolver("industry");
     const errors: Array<{ row: number; message: string }> = [];
     const validRows: ImportedCustomer[] = [];
     const seenNames = new Set<string>();
@@ -140,17 +139,6 @@ export async function POST(request: Request) {
         }
       }
 
-      const industryText = cellText(row, mapping, "industry");
-      let industryLabel = "";
-      if (industryText) {
-        const matched = resolveIndustry(industryText);
-        if (!matched) rowErrors.push(`行业“${industryText}”不在标签配置中`);
-        else {
-          columns.industry = matched.code;
-          industryLabel = matched.label;
-        }
-      }
-
       const statusText = cellText(row, mapping, "status");
       if (statusText) {
         const status = STATUS_ALIASES[statusText] ?? STATUS_ALIASES[statusText.toLowerCase()];
@@ -167,8 +155,10 @@ export async function POST(request: Request) {
 
       const contactName = cellText(row, mapping, "contactName");
       const contactEmail = cellText(row, mapping, "contactEmail");
+      const otherContactFields = ["contactNameEn", "contactTitle", "contactPhone", "contactPersonality"]
+        .map((field) => cellText(row, mapping, field));
       if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) rowErrors.push("邮箱格式不正确");
-      if (!contactName && (contactEmail || cellText(row, mapping, "contactPhone") || cellText(row, mapping, "contactTitle"))) {
+      if (!contactName && (contactEmail || otherContactFields.some(Boolean))) {
         rowErrors.push("填写了联系人信息时，主要联系人不能为空");
       }
 
@@ -187,13 +177,14 @@ export async function POST(request: Request) {
         contact: contactName
           ? {
               name: contactName,
+              nameEn: cellText(row, mapping, "contactNameEn"),
               title: cellText(row, mapping, "contactTitle"),
               phone: cellText(row, mapping, "contactPhone"),
               email: contactEmail,
+              personality: cellText(row, mapping, "contactPersonality"),
             }
           : null,
         categoryLabel,
-        industryLabel,
         ownerName: owner?.name ?? "",
         status: columns.status || existing?.status || "potential",
       });
@@ -214,8 +205,9 @@ export async function POST(request: Request) {
           mode: row.mode,
           name: row.name,
           nameEn: row.columns.name_en || "",
+          shortName: row.columns.short_name || "",
           category: row.categoryLabel,
-          industry: row.industryLabel,
+          industry: row.columns.industry || "",
           ownerName: row.ownerName,
           status: row.status,
           contactName: row.contact?.name || "",
@@ -230,11 +222,12 @@ export async function POST(request: Request) {
           // 新建时才需要兜底：负责人默认落到执行导入的管理员，状态默认潜在客户
           const inserted = db.prepare(`
             INSERT INTO customers
-              (name, name_en, category, country, region, industry, address, description, owner_id, status, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              (name, name_en, short_name, category, country, region, industry, address, description, owner_id, status, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             row.name,
             row.columns.name_en ?? "",
+            row.columns.short_name ?? "",
             row.columns.category ?? "",
             row.columns.country ?? "",
             row.columns.region ?? "",
@@ -264,17 +257,20 @@ export async function POST(request: Request) {
           }
         }
 
-        // 联系人同样是「填了才动」：已有主要联系人就更新第一条，没有就新建
+        // 联系人同样是「填了才动」：更新排在最前的那位，没有就新建；
+        // 其余联系人与名片图片不受导入影响（Excel 里带不了图）
         if (row.contact && customerId) {
           const first = db
-            .prepare("SELECT id FROM contacts WHERE customer_id = ? ORDER BY id LIMIT 1")
+            .prepare("SELECT id FROM contacts WHERE customer_id = ? ORDER BY sort_order, id LIMIT 1")
             .get(customerId) as { id: number } | undefined;
           if (first) {
-            db.prepare("UPDATE contacts SET name = ?, title = ?, phone = ?, email = ? WHERE id = ?")
-              .run(row.contact.name, row.contact.title, row.contact.phone, row.contact.email, first.id);
+            db.prepare("UPDATE contacts SET name = ?, name_en = ?, title = ?, phone = ?, email = ?, personality = ? WHERE id = ?")
+              .run(row.contact.name, row.contact.nameEn, row.contact.title, row.contact.phone, row.contact.email, row.contact.personality, first.id);
           } else {
-            db.prepare("INSERT INTO contacts (customer_id, name, title, phone, email) VALUES (?, ?, ?, ?, ?)")
-              .run(customerId, row.contact.name, row.contact.title, row.contact.phone, row.contact.email);
+            db.prepare(`
+              INSERT INTO contacts (customer_id, name, name_en, title, phone, email, personality, sort_order)
+              VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+            `).run(customerId, row.contact.name, row.contact.nameEn, row.contact.title, row.contact.phone, row.contact.email, row.contact.personality);
           }
         }
       }

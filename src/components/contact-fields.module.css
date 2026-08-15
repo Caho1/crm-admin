@@ -1,0 +1,205 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+/* 分区标题与客户「基本信息」同一套样式（左侧主色竖条） */
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #101828;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sectionTitle::before {
+  content: "";
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--primary);
+}
+
+.empty {
+  padding: 14px;
+  border: 1px dashed #d0d5dd;
+  border-radius: 8px;
+  color: #98a2b3;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* 不再套卡片：每条联系人就是一个小节，条与条之间用一条细分割线区分 */
+.item + .item {
+  padding-top: 12px;
+  border-top: 1px solid #f0f3f7;
+}
+
+.itemHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.itemTitle {
+  font-weight: 600;
+  color: #344054;
+}
+
+.itemGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+}
+
+/* 行距收紧：标签同行后每条联系人约省一半高度 */
+.itemGrid :global(.ant-form-item) {
+  margin-bottom: 12px;
+}
+
+.itemGrid :global(.ant-form-item-row) {
+  flex-wrap: nowrap;
+}
+
+.itemGrid :global(.ant-form-item-control) {
+  min-width: 0;
+}
+
+.itemGrid :global(.ant-form-item-label) {
+  text-align: right;
+}
+
+.itemGrid :global(.ant-form-item-label > label) {
+  height: 32px;
+  color: #475467;
+  white-space: nowrap;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+/* 名片沿用同一套「标签在左」的对齐，正反两张并排 */
+.cardsRow {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+
+.cardsLabel {
+  /* 与上方字段的标签列同宽（含 antd 标签自带的右侧内边距），名片与输入框左边缘对齐 */
+  flex: 0 0 118px;
+  padding-top: 6px;
+  padding-right: 8px;
+  color: #475467;
+  text-align: right;
+}
+
+.cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cardLabel {
+  color: #98a2b3;
+  font-size: 12px;
+}
+
+.cardImage {
+  border: 1px solid #e4e7ec;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #fff;
+}
+
+/* 空位即上传按钮：整块虚线框可点，不再单独摆一个「上传」按钮 */
+.cardDropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 116px;
+  height: 72px;
+  padding: 0;
+  border: 1px dashed #d0d5dd;
+  border-radius: 6px;
+  background: #fff;
+  color: #98a2b3;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.cardDropzone:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* 已有图：鼠标移上去在图上浮出更换 / 删除，图本身仍可点开看大图 */
+.cardPreview {
+  position: relative;
+  width: 116px;
+  height: 72px;
+}
+
+.cardHover {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.cardPreview:hover .cardHover {
+  opacity: 1;
+}
+
+.cardHoverAction {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: rgba(16, 24, 40, 0.62);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cardHoverAction:hover {
+  background: rgba(16, 24, 40, 0.82);
+}
+
+@media (max-width: 640px) {
+  .itemGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .full {
+    grid-column: auto;
+  }
+}

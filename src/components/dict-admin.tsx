@@ -1,7 +1,7 @@
 "use client";
 
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Empty, Form, Input, InputNumber, Modal, Segmented, Switch, Table, Tag, Tooltip, type TableProps } from "antd";
+import { App, Button, Empty, Form, Input, InputNumber, Modal, Segmented, Switch, Table, Tag, Tooltip, type TableProps } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { DICT_TYPES, type DictItem, type DictMap, type DictType } from "@/lib/dicts";
@@ -41,7 +41,6 @@ export function DictAdmin() {
   useEffect(() => { void load(); }, [load]);
 
   const rows = dicts[type] || [];
-  const currentType = DICT_TYPES.find((item) => item.type === type);
 
   const openCreate = () => {
     setEditing(null);
@@ -197,12 +196,6 @@ export function DictAdmin() {
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t("新增标签")}</Button>
         </div>
       </div>
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        title={t("这里维护的是各业务表单里下拉框的可选项。新增一项后，对应表单的下拉框立即多出该选项。")}
-      />
       <div className={styles.toolbar}>
         <Segmented
           value={type}
@@ -210,7 +203,6 @@ export function DictAdmin() {
           options={DICT_TYPES.map((item) => ({ label: `${t(item.label)}（${(dicts[item.type] || []).length}）`, value: item.type }))}
         />
       </div>
-      {currentType ? <p className={styles.counts} style={{ margin: "0 0 12px" }}>{t("示例")}：{t(currentType.hint)}</p> : null}
       <section className={styles.tableFrame}>
         <Table<DictItem>
           rowKey="id"
@@ -224,6 +216,7 @@ export function DictAdmin() {
       </section>
       <Modal
         centered
+        width={600}
         title={editing ? t("编辑标签") : t("新增标签")}
         open={modalOpen}
         okText={t("保存")}
@@ -233,7 +226,7 @@ export function DictAdmin() {
         onCancel={() => setModalOpen(false)}
         destroyOnHidden
       >
-        <Form form={form} layout="vertical" requiredMark="optional" preserve={false} initialValues={initialValues}>
+        <Form form={form} layout="horizontal" labelCol={{ flex: "90px" }} wrapperCol={{ flex: "auto" }} requiredMark={false} preserve={false} initialValues={initialValues}>
           <div className={styles.formGrid}>
             <Form.Item name="label" label={t("中文名称")} rules={[{ required: true, message: t("请输入中文名称") }]}>
               <Input placeholder={t("下拉框里显示的名称")} />

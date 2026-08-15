@@ -1,6 +1,7 @@
 import { getDb } from "@/db/client";
 import { ApiError, created, handleApiError, ok, paginationFrom, parseBody, requireApiUser } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
+import { saveContacts } from "@/lib/contacts";
 import { customerCanEdit, customerScope } from "@/lib/permissions";
 import { addCondition, searchLike, searchTerms, whereSql } from "@/lib/query";
 import { customerSchema } from "@/lib/validation";
@@ -15,15 +16,15 @@ export async function GET(request: Request) {
     const scope = customerScope(user, "c");
     addCondition(conditions, params, scope.sql, ...scope.params);
     // 关键词按空格拆分，词与词之间是「并且」，每个词在下列字段里任意命中即可：
-    // 中英文名 / 地址 / 国家 / 地区 / 简介、负责人与协作成员姓名、联系人姓名电话邮箱、
-    // 以及分类和行业的标签文案（这两列存的是 code，要回字典表按标签反查）
+    // 中英文名 / 简称 / 地址 / 国家 / 地区 / 简介 / 行业、负责人与协作成员姓名、联系人姓名电话邮箱、
+    // 以及分类的标签文案（category 存的是 code，要回字典表按标签反查；行业是手填的原文，直接 LIKE）
     for (const term of searchTerms(searchParams.get("q"))) {
       const value = searchLike(term);
       addCondition(
         conditions,
         params,
         `(
-          c.name LIKE ? OR c.name_en LIKE ? OR c.address LIKE ? OR c.country LIKE ?
+          c.name LIKE ? OR c.name_en LIKE ? OR c.short_name LIKE ? OR c.address LIKE ? OR c.country LIKE ?
           OR c.region LIKE ? OR c.description LIKE ? OR c.industry LIKE ? OR c.category LIKE ?
           OR EXISTS (SELECT 1 FROM users u WHERE u.id = c.owner_id AND u.name LIKE ?)
           OR EXISTS (
@@ -32,16 +33,15 @@ export async function GET(request: Request) {
           )
           OR EXISTS (
             SELECT 1 FROM contacts ct WHERE ct.customer_id = c.id
-              AND (ct.name LIKE ? OR ct.title LIKE ? OR ct.phone LIKE ? OR ct.email LIKE ?)
+              AND (ct.name LIKE ? OR ct.name_en LIKE ? OR ct.title LIKE ? OR ct.phone LIKE ? OR ct.email LIKE ?)
           )
           OR EXISTS (
             SELECT 1 FROM dict_items d
-            WHERE d.type IN ('customer_category', 'industry')
-              AND d.code IN (c.category, c.industry)
+            WHERE d.type = 'customer_category' AND d.code = c.category
               AND (d.label LIKE ? OR d.label_en LIKE ? OR d.label_ko LIKE ?)
           )
         )`,
-        ...Array<string>(17).fill(value),
+        ...Array<string>(19).fill(value),
       );
     }
     if (searchParams.get("status")) {
@@ -62,7 +62,7 @@ export async function GET(request: Request) {
     const total = (db.prepare(`SELECT COUNT(*) AS count FROM customers c ${where}`).get(...params) as { count: number }).count;
     const rows = db
       .prepare(`
-        SELECT c.id, c.name, c.name_en AS nameEn, c.category, c.country, c.region,
+        SELECT c.id, c.name, c.name_en AS nameEn, c.short_name AS shortName, c.category, c.country, c.region,
           c.industry, c.address, c.description,
           c.owner_id AS ownerId, owner.name AS ownerName, c.status,
           c.created_at AS createdAt, c.updated_at AS updatedAt,
@@ -99,9 +99,9 @@ export async function POST(request: Request) {
     const result = db.transaction(() => {
       const inserted = db.prepare(`
         INSERT INTO customers
-          (name, name_en, category, country, region, industry, address, description, owner_id, status, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(input.name, input.nameEn, input.category, input.country, input.region, input.industry, input.address, input.description, ownerId, input.status, user.id);
+          (name, name_en, short_name, category, country, region, industry, address, description, owner_id, status, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(input.name, input.nameEn, input.shortName, input.category, input.country, input.region, input.industry, input.address, input.description, ownerId, input.status, user.id);
       const customerId = Number(inserted.lastInsertRowid);
       const memberInsert = db.prepare(`
         INSERT OR IGNORE INTO customer_members (customer_id, user_id, access) VALUES (?, ?, 'view')
@@ -111,11 +111,7 @@ export async function POST(request: Request) {
           if (memberId !== ownerId) memberInsert.run(customerId, memberId);
         }
       }
-      if (input.contactName) {
-        db.prepare(`
-          INSERT INTO contacts (customer_id, name, title, phone, email) VALUES (?, ?, ?, ?, ?)
-        `).run(customerId, input.contactName, input.contactTitle, input.contactPhone, input.contactEmail);
-      }
+      saveContacts(db, customerId, input.contacts);
       return customerId;
     })();
     writeAudit(user.id, "create", "customer", result, `新建客户 ${input.name}`);

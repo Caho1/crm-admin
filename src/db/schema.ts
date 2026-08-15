@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS customers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   name_en TEXT NOT NULL DEFAULT '',
+  short_name TEXT NOT NULL DEFAULT '',
   category TEXT NOT NULL DEFAULT '',
   country TEXT NOT NULL DEFAULT '',
   region TEXT NOT NULL DEFAULT '',
@@ -62,13 +63,22 @@ CREATE TABLE IF NOT EXISTS customer_members (
   UNIQUE(customer_id, user_id)
 );
 
+-- 一个客户可以挂多个联系人（实际业务里十几二十位都有），顺序按 sort_order。
+-- 名片正反面以 BLOB 直接存库，随客户档案一起备份，不额外依赖文件目录。
 CREATE TABLE IF NOT EXISTS contacts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
+  name_en TEXT NOT NULL DEFAULT '',
   title TEXT NOT NULL DEFAULT '',
   phone TEXT NOT NULL DEFAULT '',
   email TEXT NOT NULL DEFAULT '',
+  personality TEXT NOT NULL DEFAULT '',
+  card_front_mime TEXT NOT NULL DEFAULT '',
+  card_front_data BLOB,
+  card_back_mime TEXT NOT NULL DEFAULT '',
+  card_back_data BLOB,
+  sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -84,6 +94,18 @@ CREATE TABLE IF NOT EXISTS products (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(class_name, grade)
+);
+
+-- 竞争对手的对标牌号：一个自家牌号往往对应多家竞品（数量不固定），
+-- 逐条记录竞品牌号与生产商，顺序按 sort_order。
+CREATE TABLE IF NOT EXISTS product_competitors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  grade TEXT NOT NULL,
+  manufacturer TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS visits (
@@ -177,6 +199,8 @@ CREATE INDEX IF NOT EXISTS idx_opportunities_customer_stage ON opportunities(cus
 CREATE INDEX IF NOT EXISTS idx_orders_customer_date ON orders(customer_id, order_date, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_orders_shipment ON orders(actual_shipment_date, expected_arrival_date, status);
 CREATE INDEX IF NOT EXISTS idx_products_grade ON products(grade, class_name);
+CREATE INDEX IF NOT EXISTS idx_product_competitors_product ON product_competitors(product_id, sort_order, id);
+CREATE INDEX IF NOT EXISTS idx_product_competitors_grade ON product_competitors(grade);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_dict_items_type ON dict_items(type, status, sort_order);
 `;
@@ -185,12 +209,21 @@ CREATE INDEX IF NOT EXISTS idx_dict_items_type ON dict_items(type, status, sort_
 // 每次开库时检查一遍，缺什么补什么（幂等，重复启动无副作用）。
 export const columnMigrations: Array<{ table: string; column: string; ddl: string }> = [
   { table: "customers", column: "name_en", ddl: "ALTER TABLE customers ADD COLUMN name_en TEXT NOT NULL DEFAULT ''" },
+  { table: "customers", column: "short_name", ddl: "ALTER TABLE customers ADD COLUMN short_name TEXT NOT NULL DEFAULT ''" },
   { table: "customers", column: "category", ddl: "ALTER TABLE customers ADD COLUMN category TEXT NOT NULL DEFAULT ''" },
   { table: "visits", column: "attachment_name", ddl: "ALTER TABLE visits ADD COLUMN attachment_name TEXT NOT NULL DEFAULT ''" },
   { table: "visits", column: "attachment_data", ddl: "ALTER TABLE visits ADD COLUMN attachment_data BLOB" },
+  { table: "contacts", column: "name_en", ddl: "ALTER TABLE contacts ADD COLUMN name_en TEXT NOT NULL DEFAULT ''" },
+  { table: "contacts", column: "personality", ddl: "ALTER TABLE contacts ADD COLUMN personality TEXT NOT NULL DEFAULT ''" },
+  { table: "contacts", column: "card_front_mime", ddl: "ALTER TABLE contacts ADD COLUMN card_front_mime TEXT NOT NULL DEFAULT ''" },
+  { table: "contacts", column: "card_front_data", ddl: "ALTER TABLE contacts ADD COLUMN card_front_data BLOB" },
+  { table: "contacts", column: "card_back_mime", ddl: "ALTER TABLE contacts ADD COLUMN card_back_mime TEXT NOT NULL DEFAULT ''" },
+  { table: "contacts", column: "card_back_data", ddl: "ALTER TABLE contacts ADD COLUMN card_back_data BLOB" },
+  { table: "contacts", column: "sort_order", ddl: "ALTER TABLE contacts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0" },
 ];
 
 // 依赖新增列的索引，必须等 columnMigrations 补完列之后再建
 export const postMigrationSql = `
 CREATE INDEX IF NOT EXISTS idx_customers_category ON customers(category, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_contacts_customer ON contacts(customer_id, sort_order, id);
 `;

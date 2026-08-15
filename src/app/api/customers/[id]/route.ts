@@ -1,7 +1,9 @@
 import { getDb } from "@/db/client";
 import { ApiError, handleApiError, integerId, ok, parseBody, requireApiUser } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
+import { listContacts, saveContacts } from "@/lib/contacts";
 import { assertCustomerAccess } from "@/lib/permissions";
+import { attachCompetitors } from "@/lib/products";
 import { customerSchema } from "@/lib/validation";
 
 type Context = { params: Promise<{ id: string }> };
@@ -16,7 +18,7 @@ export async function GET(_request: Request, context: Context) {
     const canEdit = user.role === "admin" || access.ownerId === user.id || access.memberAccess === "edit";
     const db = getDb();
     const customer = db.prepare(`
-      SELECT c.id, c.name, c.name_en AS nameEn, c.category, c.country, c.region,
+      SELECT c.id, c.name, c.name_en AS nameEn, c.short_name AS shortName, c.category, c.country, c.region,
         c.industry, c.address, c.description,
         c.owner_id AS ownerId, owner.name AS ownerName, c.status,
         c.created_at AS createdAt, c.updated_at AS updatedAt
@@ -24,7 +26,7 @@ export async function GET(_request: Request, context: Context) {
       WHERE c.id = ? AND c.deleted_at IS NULL
     `).get(id);
     if (!customer) throw new ApiError(404, "NOT_FOUND", "客户不存在或已删除");
-    const contacts = db.prepare("SELECT id, name, title, phone, email FROM contacts WHERE customer_id = ? ORDER BY id").all(id);
+    const contacts = listContacts(db, id);
     const members = db.prepare(`
       SELECT u.id, u.name, cm.access FROM customer_members cm
       JOIN users u ON u.id = cm.user_id WHERE cm.customer_id = ? ORDER BY u.name
@@ -36,7 +38,21 @@ export async function GET(_request: Request, context: Context) {
       WHERE customer_id = ? AND deleted_at IS NULL GROUP BY status
     `).all(id) as Array<{ status: string; count: number }>;
     const orderStatusCounts = Object.fromEntries(orderStatusRows.map((row) => [row.status, row.count]));
-    return ok({ customer, contacts, members, canEdit, orderStatusCounts });
+    // 竞品列表：客户下过单或在谈的我方产品，各自挂着的竞争型号。
+    // 竞品维护在产品档案里，这里只按客户实际用到的产品聚合，不额外录入。
+    const relatedProducts = db.prepare(`
+      SELECT p.id, p.class_name AS className, p.grade,
+        (SELECT COUNT(*) FROM orders o WHERE o.product_id = p.id AND o.customer_id = ? AND o.deleted_at IS NULL) AS orderCount
+      FROM products p
+      WHERE p.id IN (
+        SELECT product_id FROM orders WHERE customer_id = ? AND deleted_at IS NULL
+        UNION
+        SELECT product_id FROM opportunities WHERE customer_id = ? AND deleted_at IS NULL AND product_id IS NOT NULL
+      )
+      ORDER BY orderCount DESC, p.class_name, p.grade
+    `).all(id, id, id) as Array<{ id: number; className: string; grade: string; orderCount: number }>;
+    const competitorProducts = attachCompetitors(db, relatedProducts);
+    return ok({ customer, contacts, members, canEdit, orderStatusCounts, competitorProducts });
   } catch (error) {
     return handleApiError(error);
   }
@@ -57,10 +73,10 @@ export async function PUT(request: Request, context: Context) {
     const ownerId = user.role === "admin" && input.ownerId ? input.ownerId : current.ownerId;
     db.transaction(() => {
       db.prepare(`
-        UPDATE customers SET name = ?, name_en = ?, category = ?, country = ?, region = ?,
+        UPDATE customers SET name = ?, name_en = ?, short_name = ?, category = ?, country = ?, region = ?,
           industry = ?, address = ?, description = ?, owner_id = ?, status = ?,
           updated_at = datetime('now') WHERE id = ?
-      `).run(input.name, input.nameEn, input.category, input.country, input.region, input.industry, input.address, input.description, ownerId, input.status, id);
+      `).run(input.name, input.nameEn, input.shortName, input.category, input.country, input.region, input.industry, input.address, input.description, ownerId, input.status, id);
       if (user.role === "admin") {
         // 保留已有成员的 access 等级，避免 edit 权限被重置成 view
         const existing = db.prepare("SELECT user_id AS userId, access FROM customer_members WHERE customer_id = ?").all(id) as Array<{ userId: number; access: string }>;
@@ -69,18 +85,7 @@ export async function PUT(request: Request, context: Context) {
         const insert = db.prepare("INSERT OR IGNORE INTO customer_members (customer_id, user_id, access) VALUES (?, ?, ?)");
         for (const memberId of input.memberIds) if (memberId !== ownerId) insert.run(id, memberId, accessOf.get(memberId) || "view");
       }
-      const firstContact = db.prepare("SELECT id FROM contacts WHERE customer_id = ? ORDER BY id LIMIT 1").get(id) as { id: number } | undefined;
-      if (input.contactName) {
-        if (firstContact) {
-          db.prepare("UPDATE contacts SET name = ?, title = ?, phone = ?, email = ? WHERE id = ?")
-            .run(input.contactName, input.contactTitle, input.contactPhone, input.contactEmail, firstContact.id);
-        } else {
-          db.prepare("INSERT INTO contacts (customer_id, name, title, phone, email) VALUES (?, ?, ?, ?, ?)")
-            .run(id, input.contactName, input.contactTitle, input.contactPhone, input.contactEmail);
-        }
-      } else if (firstContact) {
-        db.prepare("DELETE FROM contacts WHERE id = ?").run(firstContact.id);
-      }
+      saveContacts(db, id, input.contacts);
     })();
     writeAudit(user.id, "update", "customer", id, `更新客户 ${input.name}`);
     return ok({ id });

@@ -18,7 +18,9 @@
 /out/
 
 # production
-/build
+# 忽略构建产物目录，但 NSIS 安装脚本是源码，必须入库
+/build/*
+!/build/installer.nsh
 
 # misc
 .DS_Store

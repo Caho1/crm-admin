@@ -65,6 +65,31 @@
   column-gap: 18px;
 }
 
+/* 标签在左、控件在右：与客户 / 订单表单同一套观感 */
+.formGrid > :global(.ant-form-item) {
+  margin-bottom: 14px;
+}
+
+/* 标签列和控件必须同行：窄弹窗里 antd 的 Row 默认会换行，把标签挤到控件上方 */
+.formGrid :global(.ant-form-item-row) {
+  flex-wrap: nowrap;
+}
+
+.formGrid :global(.ant-form-item-control) {
+  min-width: 0;
+}
+
+.formGrid :global(.ant-form-item-label) {
+  text-align: right;
+}
+
+.formGrid :global(.ant-form-item-label > label) {
+  height: auto;
+  min-height: 32px;
+  color: #475467;
+  white-space: normal;
+}
+
 .full {
   grid-column: 1 / -1;
 }

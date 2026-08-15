@@ -30,9 +30,34 @@ export const dictItemSchema = z.object({
 
 export const dictItemUpdateSchema = dictItemSchema.omit({ type: true, code: true });
 
+const optionalEmail = z.union([z.string().trim().email("邮箱格式不正确"), z.literal("")]).optional().default("");
+
+// 名片图片随表单一起提交（data URL）。三态：
+// 不传 = 保持原图；"" 或 null = 删除；data:image/... = 覆盖为新图。
+// 图片格式不限（png / jpg / webp / gif / heic…），只要是 image/* 的 data URL 即可
+const cardImage = z
+  .union([z.string().regex(/^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/i, "名片图片格式不支持"), z.literal(""), z.null()])
+  .optional();
+
+export const contactSchema = z.object({
+  // 已有联系人带 id 回来，用于区分「更新」与「新增」；缺 id 即新增
+  id: positiveId.optional(),
+  name: z.string().trim().min(1, "请输入联系人姓名").max(80),
+  nameEn: optionalText(80),
+  title: optionalText(80),
+  phone: optionalText(80),
+  email: optionalEmail,
+  personality: optionalText(1000),
+  cardFront: cardImage,
+  cardBack: cardImage,
+});
+
+export type ContactInput = z.infer<typeof contactSchema>;
+
 export const customerSchema = z.object({
   name: z.string().trim().min(2, "客户名称至少 2 个字符").max(160),
   nameEn: optionalText(160),
+  shortName: optionalText(80),
   category: optionalText(60),
   country: optionalText(80),
   region: optionalText(80),
@@ -42,10 +67,7 @@ export const customerSchema = z.object({
   ownerId: positiveId.optional(),
   status: z.enum(["potential", "active", "inactive"]).default("potential"),
   memberIds: z.array(positiveId).optional().default([]),
-  contactName: optionalText(80),
-  contactTitle: optionalText(80),
-  contactPhone: optionalText(80),
-  contactEmail: z.union([z.string().trim().email("邮箱格式不正确"), z.literal("")]).optional().default(""),
+  contacts: z.array(contactSchema).max(50, "联系人最多 50 位").optional().default([]),
 });
 
 // 拜访记录从简：标题和日期必填即可，参加人员、纪要等都是可选补充；
@@ -79,6 +101,16 @@ export const opportunitySchema = z.object({
   status: z.enum(["active", "closed"]).default("active"),
 });
 
+// 竞品对标牌号：带 id 的是库里已有的记录（更新），缺 id 即新增
+export const productCompetitorSchema = z.object({
+  id: positiveId.optional(),
+  grade: z.string().trim().min(1, "请输入竞争型号").max(120),
+  manufacturer: optionalText(160),
+  notes: optionalText(500),
+});
+
+export type ProductCompetitorInput = z.infer<typeof productCompetitorSchema>;
+
 export const productSchema = z.object({
   className: z.string().trim().min(1, "请输入产品大类").max(80),
   grade: z.string().trim().min(1, "请输入型号/牌号").max(120),
@@ -87,6 +119,8 @@ export const productSchema = z.object({
   application: optionalText(500),
   notes: optionalText(2000),
   status: z.enum(["active", "inactive"]).default("active"),
+  // 一个牌号可能对上几十个竞品，留足条数
+  competitors: z.array(productCompetitorSchema).max(100, "竞争型号最多 100 条").optional().default([]),
 });
 
 export const orderSchema = z.object({

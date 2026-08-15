@@ -3,7 +3,7 @@ import { getDb } from "@/db/client";
 import { ApiError, handleApiError, ok, requireApiAdmin } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
 import { generatedCode } from "@/lib/query";
-import { headerAliases, normalizeHeader, parseExcelDate, parseExcelNumber, parseShipmentMonth } from "@/lib/excel";
+import { IMPORT_FILE_PATTERN, headerAliases, normalizeHeader, parseExcelDate, parseExcelNumber, parseShipmentMonth, readUploadWorksheet } from "@/lib/excel";
 
 export const runtime = "nodejs";
 
@@ -77,14 +77,12 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const file = form.get("file");
     const commit = form.get("commit") === "true";
-    if (!(file instanceof File)) throw new ApiError(400, "FILE_REQUIRED", "请选择 Excel 文件");
-    if (file.size > 5 * 1024 * 1024) throw new ApiError(413, "FILE_TOO_LARGE", "Excel 文件不能超过 5MB");
-    if (!/\.xlsx$/i.test(file.name)) throw new ApiError(422, "INVALID_FILE_TYPE", "仅支持 .xlsx 文件");
+    if (!(file instanceof File)) throw new ApiError(400, "FILE_REQUIRED", "请选择导入文件");
+    if (file.size > 5 * 1024 * 1024) throw new ApiError(413, "FILE_TOO_LARGE", "导入文件不能超过 5MB");
+    if (!IMPORT_FILE_PATTERN.test(file.name)) throw new ApiError(422, "INVALID_FILE_TYPE", "仅支持 .xlsx 或 .csv 文件");
 
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(Buffer.from(await file.arrayBuffer()) as never);
-    const worksheet = workbook.worksheets[0];
-    if (!worksheet || worksheet.rowCount < 2) throw new ApiError(422, "EMPTY_SHEET", "Excel 中没有可导入的数据");
+    const worksheet = await readUploadWorksheet(file);
+    if (!worksheet || worksheet.rowCount < 2) throw new ApiError(422, "EMPTY_SHEET", "文件中没有可导入的数据");
 
     const headerRow = worksheet.getRow(1);
     const mapping: Record<string, number> = {};

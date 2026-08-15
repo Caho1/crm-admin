@@ -1,6 +1,6 @@
 "use client";
 
-import { GlobalOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
+import { ContactsOutlined, GlobalOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
 import { Alert, Button, Form, Input, Select } from "antd";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -44,15 +44,15 @@ export function LoginForm() {
       <section className={styles.panel}>
         <div className={styles.brandSide}>
           <div className={styles.brandLockup}>
-            <div className={styles.brandMark}>S</div>
+            <div className={styles.brandMark}><ContactsOutlined /></div>
             <div>
-              <div className={styles.brandName}>{t("销售业务管理系统")}</div>
-              <div className={styles.brandEn}>SALES OPERATIONS</div>
+              <div className={styles.brandName}>{t("客户管理系统")}</div>
+              <div className={styles.brandEn}>CUSTOMER MANAGEMENT</div>
             </div>
           </div>
           <div className={styles.brandStatement}>
-            <strong>{t("销售运营工作台")}</strong>
-            <span>SALES OPERATIONS · 2026</span>
+            <strong>{t("客户管理工作台")}</strong>
+            <span>CUSTOMER MANAGEMENT · 2026</span>
           </div>
           <div className={styles.accentLine} />
         </div>

@@ -31,6 +31,22 @@ export function seedDatabase(db: Database.Database) {
     insertProduct.run("PP", "J-560S", "LOTTE", "乐天化学", "薄膜材料", "客户测试牌号");
     insertProduct.run("PS", "GPPS-525", "INEOS", "英力士", "通用透明制品", "通用级聚苯乙烯");
 
+    // 竞品对标牌号演示数据：一个自家牌号可以挂多条竞品
+    const insertCompetitor = db.prepare(`
+      INSERT INTO product_competitors (product_id, grade, manufacturer, notes, sort_order)
+      SELECT p.id, ?, ?, ?, ?
+      FROM products p
+      WHERE p.class_name = ? AND p.grade = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM product_competitors pc WHERE pc.product_id = p.id AND pc.grade = ?
+        )
+    `);
+    insertCompetitor.run("CJS700", "广州石化", "熔指相近，注塑件表面光泽略低", 0, "PP", "H1500", "CJS700");
+    insertCompetitor.run("T30S", "中石化茂名", "通用拉丝料，价格更低", 1, "PP", "H1500", "T30S");
+    insertCompetitor.run("PPH-T03", "中石油大庆", "刚性接近，气味控制稍弱", 2, "PP", "H1500", "PPH-T03");
+    insertCompetitor.run("F800E", "上海赛科", "薄膜级对标牌号", 0, "PP", "J-560S", "F800E");
+    insertCompetitor.run("GPPS-123P", "中新化工", "透明度相当，交期更短", 0, "PS", "GPPS-525", "GPPS-123P");
+
     const insertCustomer = db.prepare(`
       INSERT INTO customers
         (name, country, region, industry, address, description, owner_id, status, created_by)
@@ -47,14 +63,15 @@ export function seedDatabase(db: Database.Database) {
     const fillBlank = db.prepare(`
       UPDATE customers
       SET name_en = CASE WHEN name_en = '' THEN ? ELSE name_en END,
-          category = CASE WHEN category = '' THEN ? ELSE category END
+          category = CASE WHEN category = '' THEN ? ELSE category END,
+          short_name = CASE WHEN short_name = '' THEN ? ELSE short_name END
       WHERE name = ? AND deleted_at IS NULL
     `);
-    fillBlank.run("BEST GAIN TRADING CO., LTD.", "trader", "BEST GAIN");
-    fillBlank.run("Foshan Shunde Yilong Trading Co., Ltd.", "integrated", "佛山市顺德区毅龙贸易有限公司");
-    fillBlank.run("Hanwha Corporation", "factory", "한화상사");
-    fillBlank.run("Zhongshan Xinsu Packaging Material Co., Ltd.", "factory", "中山市新塑包装材料有限公司");
-    fillBlank.run("Dongguan Hongfa Injection Molding Factory", "factory", "东莞市宏发注塑制品厂");
+    fillBlank.run("BEST GAIN TRADING CO., LTD.", "trader", "BEST GAIN", "BEST GAIN");
+    fillBlank.run("Foshan Shunde Yilong Trading Co., Ltd.", "integrated", "毅龙贸易", "佛山市顺德区毅龙贸易有限公司");
+    fillBlank.run("Hanwha Corporation", "factory", "한화상사", "한화상사");
+    fillBlank.run("Zhongshan Xinsu Packaging Material Co., Ltd.", "factory", "新塑包装", "中山市新塑包装材料有限公司");
+    fillBlank.run("Dongguan Hongfa Injection Molding Factory", "factory", "宏发注塑", "东莞市宏发注塑制品厂");
 
     const customers = db
       .prepare("SELECT id, name FROM customers WHERE deleted_at IS NULL")
@@ -71,10 +88,22 @@ export function seedDatabase(db: Database.Database) {
     `).run(customerId["BEST GAIN"], userId.kim);
 
     db.prepare(`
-      INSERT INTO contacts (customer_id, name, title, phone, email)
-      SELECT ?, ?, ?, ?, ?
-      WHERE NOT EXISTS (SELECT 1 FROM contacts WHERE customer_id = ? AND name = ?)
-    `).run(customerId["BEST GAIN"], "Park Min-su", "采购经理", "+852 5555 1200", "purchasing@bestgain.example", customerId["BEST GAIN"], "Park Min-su");
+      INSERT INTO contacts (customer_id, name, name_en, title, phone, email, personality, sort_order)
+      SELECT ?, ?, ?, ?, ?, ?, ?, 0
+      -- 老库里这条演示联系人是以英文名建的，两个名字都要认，避免重复播种
+      WHERE NOT EXISTS (SELECT 1 FROM contacts WHERE customer_id = ? AND name IN (?, ?))
+    `).run(
+      customerId["BEST GAIN"],
+      "朴敏洙",
+      "Park Min-su",
+      "采购经理",
+      "+852 5555 1200",
+      "purchasing@bestgain.example",
+      "做事细致，看重交期与稳定供货；爱好登山、喜欢喝咖啡聊天",
+      customerId["BEST GAIN"],
+      "朴敏洙",
+      "Park Min-su",
+    );
 
     const insertVisit = db.prepare(`
       INSERT OR IGNORE INTO visits
@@ -252,7 +281,6 @@ export function seedDatabase(db: Database.Database) {
       }
     };
     backfill("product_class", "SELECT DISTINCT class_name AS value FROM products WHERE class_name <> ''", 100);
-    backfill("industry", "SELECT DISTINCT industry AS value FROM customers WHERE industry <> '' AND deleted_at IS NULL", 10);
   });
 
   seed();

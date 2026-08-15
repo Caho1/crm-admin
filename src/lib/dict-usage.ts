@@ -5,7 +5,6 @@ import type { DictType } from "./dicts";
 const USAGE_SOURCE: Record<DictType, { table: string; column: string; softDelete: boolean }> = {
   customer_category: { table: "customers", column: "category", softDelete: true },
   product_class: { table: "products", column: "class_name", softDelete: false },
-  industry: { table: "customers", column: "industry", softDelete: true },
 };
 
 export function dictUsageCount(type: DictType, code: string) {

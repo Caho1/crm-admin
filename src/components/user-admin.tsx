@@ -265,8 +265,8 @@ export function UserAdmin() {
       <section className={styles.tableFrame}>
         <Table rowKey="id" loading={loading} columns={columns} dataSource={rows} scroll={{ x: 900 }} pagination={{ current: page, pageSize, total, showSizeChanger: true, showTotal: (value) => t("共 {n} 人", { n: value }), onChange: (next, size) => { setPage(size !== pageSize ? 1 : next); setPageSize(size); } }} />
       </section>
-      <Modal centered title={editing ? t("编辑用户") : t("新建用户")} open={modalOpen} okText={t("保存")} cancelText={t("取消")} confirmLoading={saving} onOk={() => void save()} onCancel={() => setModalOpen(false)} destroyOnHidden>
-        <Form form={form} layout="vertical" requiredMark="optional" preserve={false} initialValues={initialValues}>
+      <Modal centered width={600} title={editing ? t("编辑用户") : t("新建用户")} open={modalOpen} okText={t("保存")} cancelText={t("取消")} confirmLoading={saving} onOk={() => void save()} onCancel={() => setModalOpen(false)} destroyOnHidden>
+        <Form form={form} layout="horizontal" labelCol={{ flex: "90px" }} wrapperCol={{ flex: "auto" }} requiredMark={false} preserve={false} initialValues={initialValues}>
           <div className={styles.formGrid}>
             <Form.Item name="name" label={t("姓名")} rules={[{ required: true, message: t("请输入姓名") }]}><Input /></Form.Item>
             <Form.Item name="username" label={t("登录账号")} rules={[{ required: true, min: 3, message: t("账号至少 3 个字符") }]}><Input autoComplete="off" /></Form.Item>
@@ -277,13 +277,13 @@ export function UserAdmin() {
         </Form>
       </Modal>
       <Modal centered title={t("重置 {name} 的密码", { name: passwordTarget?.name || t("用户") })} open={Boolean(passwordTarget)} okText={t("确认重置")} cancelText={t("取消")} confirmLoading={saving} onOk={() => void resetPassword()} onCancel={() => setPasswordTarget(null)} destroyOnHidden>
-        <Form form={passwordForm} layout="vertical" preserve={false}>
+        <Form form={passwordForm} layout="horizontal" labelCol={{ flex: "90px" }} wrapperCol={{ flex: "auto" }} requiredMark={false} preserve={false}>
           <Form.Item name="password" label={t("新密码")} rules={[{ required: true, min: 8, message: t("密码至少 8 个字符") }]}><Input.Password autoComplete="new-password" /></Form.Item>
         </Form>
       </Modal>
       <Modal centered title={t("离职数据交接")} open={handoverOpen} okText={t("确认交接")} okButtonProps={{ danger: true }} cancelText={t("取消")} confirmLoading={saving} onOk={() => void handover()} onCancel={() => setHandoverOpen(false)} destroyOnHidden>
         <Alert type="warning" showIcon style={{ marginBottom: 16 }} title={t("交接后，交出人名下的客户、商机、订单将立即转移给接收人，此操作不可撤销。")} />
-        <Form form={handoverForm} layout="vertical" preserve={false}>
+        <Form form={handoverForm} layout="horizontal" labelCol={{ flex: "90px" }} wrapperCol={{ flex: "auto" }} requiredMark={false} preserve={false}>
           <Form.Item name="fromUserId" label={t("交出人")} rules={[{ required: true, message: t("请选择交出人") }]}>
             <Select showSearch optionFilterProp="label" placeholder={t("请选择交出人（含已停用账号）")} options={handoverFromOptions} onChange={() => handoverForm.setFieldValue("toUserId", undefined)} />
           </Form.Item>

@@ -14,6 +14,7 @@ export async function GET() {
     worksheet.addRow({
       name: "东莞市示例塑胶有限公司",
       nameEn: "Dongguan Example Plastics Co., Ltd.",
+      shortName: "东莞示例",
       category: "工厂",
       industry: "注塑加工",
       country: "中国",
@@ -23,9 +24,11 @@ export async function GET() {
       ownerName: "金载敏",
       status: "潜在客户",
       contactName: "张三",
+      contactNameEn: "Zhang San",
       contactTitle: "采购经理",
       contactPhone: "+86 138 0000 0000",
       contactEmail: "buyer@example.com",
+      contactPersonality: "性格直爽，重视交期，爱好高尔夫",
     });
     styleCustomerSheet(worksheet);
     const buffer = await workbook.xlsx.writeBuffer();

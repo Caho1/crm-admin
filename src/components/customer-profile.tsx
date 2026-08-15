@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowLeftOutlined, EditOutlined } from "@ant-design/icons";
-import { Button, Empty, Skeleton, Tabs, Tag } from "antd";
+import { ArrowLeftOutlined, DeleteOutlined, EditOutlined, MailOutlined, PhoneOutlined } from "@ant-design/icons";
+import { App, Button, Empty, Image, Skeleton, Tabs, Tag } from "antd";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { dictLabelOf, type DictMap } from "@/lib/dicts";
@@ -15,22 +16,133 @@ import { StatusTag, statusLabel } from "./status-tag";
 import resStyles from "./resource-page.module.css";
 import styles from "./customer-profile.module.css";
 
+type Contact = {
+  id: number;
+  name: string;
+  nameEn: string;
+  title: string;
+  phone: string;
+  email: string;
+  personality: string;
+  hasCardFront: number;
+  hasCardBack: number;
+};
+
+/** 客户用到的我方产品 + 该产品登记的竞品（竞品本身在产品档案里维护） */
+type CompetitorProduct = {
+  id: number;
+  className: string;
+  grade: string;
+  orderCount: number;
+  competitors: Array<{ id: number; grade: string; manufacturer: string; notes: string }>;
+};
+
 type Detail = {
   customer: Record<string, string | number>;
-  contacts: Array<Record<string, string | number>>;
+  contacts: Contact[];
   members: Array<Record<string, string | number>>;
   canEdit?: boolean;
   orderStatusCounts?: Record<string, number>;
+  competitorProducts?: CompetitorProduct[];
 };
+
+/** 联系人名片墙：一位联系人一张卡，名片正反面点开可看大图 */
+function ContactList({ contacts, customerId, version }: { contacts: Contact[]; customerId: number; version: string }) {
+  const { t } = useLocale();
+  if (!contacts.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("暂无联系人")} />;
+  const cardUrl = (contactId: number, side: "front" | "back") =>
+    `/api/customers/${customerId}/contacts/${contactId}/card?side=${side}&v=${encodeURIComponent(version)}`;
+  return (
+    <div className={styles.contactGrid}>
+      {contacts.map((contact) => (
+        <div key={contact.id} className={styles.contactCard}>
+          <div className={styles.contactHead}>
+            <span className={styles.contactName}>{contact.name}</span>
+            {contact.nameEn ? <span className={styles.contactNameEn}>{contact.nameEn}</span> : null}
+            {contact.title ? <Tag color="blue">{contact.title}</Tag> : null}
+          </div>
+          <div className={styles.contactMeta}>
+            <span><PhoneOutlined /> {contact.phone || "-"}</span>
+            <span><MailOutlined /> {contact.email || "-"}</span>
+          </div>
+          <div className={styles.contactBlock}>
+            <div className={styles.contactBlockLabel}>{t("性格爱好")}</div>
+            <div className={`${styles.contactBlockValue} ${resStyles.preWrap}`}>{contact.personality || "-"}</div>
+          </div>
+          <div className={styles.contactCards}>
+            {contact.hasCardFront ? (
+              <Image src={cardUrl(contact.id, "front")} alt={t("名片正面")} width={132} height={84} className={styles.contactCardImage} />
+            ) : null}
+            {contact.hasCardBack ? (
+              <Image src={cardUrl(contact.id, "back")} alt={t("名片反面")} width={132} height={84} className={styles.contactCardImage} />
+            ) : null}
+            {!contact.hasCardFront && !contact.hasCardBack ? <span className={resStyles.muted}>{t("未上传名片")}</span> : null}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 竞品列表：按客户下过单 / 在谈的我方产品聚合，列出每个产品对应的竞争型号。
+ * 竞品数据在「产品型号」里维护，这里只读展示，避免同一份竞品在客户下重复录入。
+ */
+function CompetitorList({ products }: { products: CompetitorProduct[] }) {
+  const { t } = useLocale();
+  if (!products.length) {
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("该客户还没有关联的产品")} />;
+  }
+  return (
+    <div className={styles.competitorList}>
+      {products.map((product) => (
+        <section key={product.id} className={styles.competitorGroup}>
+          <div className={styles.competitorHead}>
+            <span className={resStyles.product}>
+              <span className={resStyles.productClass}>{product.className}</span>
+              {product.grade}
+            </span>
+            {product.orderCount ? <span className={resStyles.muted}>{t("{n} 单", { n: product.orderCount })}</span> : null}
+          </div>
+          {product.competitors.length ? (
+            <table className={styles.competitorTable}>
+              <thead>
+                <tr>
+                  <th>{t("竞争型号")}</th>
+                  <th>{t("生产商")}</th>
+                  <th>{t("备注")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {product.competitors.map((item) => (
+                  <tr key={item.id}>
+                    <td className={styles.competitorGrade}>{item.grade}</td>
+                    <td>{item.manufacturer || <span className={resStyles.muted}>-</span>}</td>
+                    <td>{item.notes || <span className={resStyles.muted}>-</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className={styles.competitorEmpty}>{t("该产品尚未登记竞争型号，可在「产品型号」里补充")}</div>
+          )}
+        </section>
+      ))}
+    </div>
+  );
+}
 
 export function CustomerProfile({ id }: { id: number }) {
   const { t, locale } = useLocale();
+  const router = useRouter();
+  const { message, modal } = App.useApp();
   const currentUser = useCurrentUser();
   const [data, setData] = useState<Detail | null>(null);
   const [dicts, setDicts] = useState<DictMap>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   // silent：只刷新数据（如订单增删改后同步页头履约概要），不闪骨架屏
   const load = useCallback(async (silent = false) => {
@@ -51,6 +163,34 @@ export function CustomerProfile({ id }: { id: number }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // 删除入口从客户卡片移到了详情页：确认弹窗过一道，删完直接回列表
+  const remove = useCallback(async () => {
+    setRemoving(true);
+    try {
+      const response = await apiFetch(`/api/customers/${id}`, { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message || "删除失败");
+      message.success(t("记录已删除"));
+      router.push("/customers");
+    } catch (err) {
+      message.error(t(err instanceof Error ? err.message : "删除失败"));
+    } finally {
+      setRemoving(false);
+    }
+  }, [id, message, router, t]);
+
+  const confirmRemove = useCallback(() => {
+    modal.confirm({
+      title: t("确认删除该客户？"),
+      content: t("「{name}」及其联系人、名片将一并删除，订单与拜访记录保留。", { name: String(data?.customer.name || "") }),
+      okText: t("确认删除"),
+      cancelText: t("取消"),
+      okButtonProps: { danger: true },
+      centered: true,
+      onOk: () => remove(),
+    });
+  }, [data?.customer.name, modal, remove, t]);
 
   // 分类 / 行业存的是 code，展示要查字典换成当前语言的名称
   useEffect(() => {
@@ -80,9 +220,11 @@ export function CustomerProfile({ id }: { id: number }) {
   const { customer } = data;
   const location = [customer.country, customer.region].filter(Boolean).join(" / ");
   const categoryLabel = dictLabelOf(dicts.customer_category, String(customer.category || ""), locale);
-  const industryLabel = dictLabelOf(dicts.industry, String(customer.industry || ""), locale);
+  const industryLabel = String(customer.industry || "");
   const orderStatusCounts = data.orderStatusCounts || {};
   const orderTotal = Object.values(orderStatusCounts).reduce((sum, count) => sum + count, 0);
+  // 页签角标显示竞品条数（跨产品合计），没有就不显示数字
+  const competitorCount = (data.competitorProducts || []).reduce((sum, product) => sum + product.competitors.length, 0);
 
   return (
     <div className={styles.page}>
@@ -97,13 +239,21 @@ export function CustomerProfile({ id }: { id: number }) {
           </div>
           {customer.nameEn ? <div className={styles.nameEn}>{customer.nameEn}</div> : null}
           <div className={styles.headerMeta}>
+            {customer.shortName ? <span><b>{t("简称")}</b> {customer.shortName}</span> : null}
             <span><b>{t("负责人")}</b> {customer.ownerName}</span>
             {location ? <span><b>{t("国家 / 地区")}</b> {location}</span> : null}
             {industryLabel ? <span><b>{t("行业")}</b> {industryLabel}</span> : null}
           </div>
         </div>
         <div className={styles.headerSide}>
-          {/* 订单履约概要放在页头右侧，打开档案第一眼就能看到整体进度 */}
+          {/* 主操作放页头最上方：编辑就地开弹窗，删除先弹确认框，确认后回列表 */}
+          {data.canEdit !== false ? (
+            <div className={styles.headerActions}>
+              <Button type="primary" icon={<EditOutlined />} onClick={() => setEditOpen(true)}>{t("编辑客户")}</Button>
+              <Button danger icon={<DeleteOutlined />} loading={removing} onClick={confirmRemove}>{t("删除客户")}</Button>
+            </div>
+          ) : null}
+          {/* 订单履约概要跟在操作下面，打开档案第一眼就能看到整体进度 */}
           {orderTotal > 0 ? (
             <div className={styles.summary}>
               {STATUS_FLOW.map((status) => (
@@ -112,12 +262,6 @@ export function CustomerProfile({ id }: { id: number }) {
                   <span className={styles.summaryLabel}>{t(statusLabel(status))}</span>
                 </div>
               ))}
-            </div>
-          ) : null}
-          {/* 详情页主操作：有编辑权限时就地开编辑弹窗，不跳回列表页 */}
-          {data.canEdit !== false ? (
-            <div className={styles.headerActions}>
-              <Button type="primary" icon={<EditOutlined />} onClick={() => setEditOpen(true)}>{t("编辑客户")}</Button>
             </div>
           ) : null}
         </div>
@@ -136,10 +280,16 @@ export function CustomerProfile({ id }: { id: number }) {
         </div>
         <div className={styles.fact}>
           <div className={styles.factLabel}>{t("联系人")}</div>
+          {/* 联系人可能有二十几位，这里只速览前三位，完整名单看下方「联系人」页签 */}
           <div className={styles.tagWrap}>
-            {data.contacts.length ? data.contacts.map((contact) => (
-              <Tag key={contact.id}>{contact.name}{contact.title ? ` · ${contact.title}` : ""}{contact.phone ? ` · ${contact.phone}` : ""}</Tag>
-            )) : <span className={resStyles.muted}>-</span>}
+            {data.contacts.length ? (
+              <>
+                {data.contacts.slice(0, 3).map((contact) => (
+                  <Tag key={contact.id}>{contact.name}{contact.title ? ` · ${contact.title}` : ""}{contact.phone ? ` · ${contact.phone}` : ""}</Tag>
+                ))}
+                {data.contacts.length > 3 ? <Tag>+{data.contacts.length - 3}</Tag> : null}
+              </>
+            ) : <span className={resStyles.muted}>-</span>}
           </div>
         </div>
         <div className={styles.fact}>
@@ -171,6 +321,16 @@ export function CustomerProfile({ id }: { id: number }) {
                 onChanged={() => void load(true)}
               />
             ),
+          },
+          {
+            key: "contacts",
+            label: `${t("联系人")}${data.contacts.length ? ` (${data.contacts.length})` : ""}`,
+            children: <ContactList contacts={data.contacts} customerId={id} version={String(customer.updatedAt || "")} />,
+          },
+          {
+            key: "competitors",
+            label: `${t("竞品列表")}${competitorCount ? ` (${competitorCount})` : ""}`,
+            children: <CompetitorList products={data.competitorProducts || []} />,
           },
           {
             key: "visits",

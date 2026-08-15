@@ -381,8 +381,18 @@ export function CustomerOrders({
         destroyOnHidden
         styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "auto", paddingRight: 4 } }}
       >
-        <Form form={form} layout="vertical" requiredMark="optional" preserve={false} initialValues={initialValues}>
+        {/* 标签在左、控件在右，和客户表单一套观感 */}
+        <Form
+          form={form}
+          layout="horizontal"
+          labelCol={{ flex: "118px" }}
+          wrapperCol={{ flex: "auto" }}
+          requiredMark={false}
+          preserve={false}
+          initialValues={initialValues}
+        >
           <div className={resStyles.formGrid}>
+            <div className={`${resStyles.fieldFull} ${resStyles.sectionTitle}`}>{t("订单信息")}</div>
             {isGlobal ? (
               <Form.Item name="customerId" label={t("客户")} rules={[{ required: true, message: t("{label}不能为空", { label: t("客户") }) }]}>
                 <Select
@@ -400,8 +410,8 @@ export function CustomerOrders({
             <Form.Item name="orderDate" label={t("下单日期")} rules={[{ required: true, message: t("{label}不能为空", { label: t("下单日期") }) }]}>
               <DatePicker style={{ width: "100%" }} format="YYYY-MM-DD" />
             </Form.Item>
-            <Form.Item name="productId" label={t("产品型号 / 牌号")} rules={[{ required: true, message: t("{label}不能为空", { label: t("产品型号 / 牌号") }) }]}>
-              <Select showSearch optionFilterProp="label" options={productOptions} placeholder={t("请选择{label}", { label: t("产品型号 / 牌号") })} />
+            <Form.Item name="productId" label={t("产品")} rules={[{ required: true, message: t("{label}不能为空", { label: t("产品") }) }]}>
+              <Select showSearch optionFilterProp="label" options={productOptions} placeholder={t("请选择{label}", { label: t("产品") })} />
             </Form.Item>
             <Form.Item name="quantity" label={t("数量")} rules={[{ required: true, message: t("{label}不能为空", { label: t("数量") }) }]}>
               <InputNumber style={{ width: "100%" }} min={0} precision={2} />
@@ -417,6 +427,7 @@ export function CustomerOrders({
                 <Select showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: item.name }))} />
               </Form.Item>
             ) : null}
+            <div className={`${resStyles.fieldFull} ${resStyles.sectionTitle}`}>{t("履约与单据")}</div>
             <Form.Item name="destination" label={t("目的地")}><Input /></Form.Item>
             <Form.Item name="tradeTerms" label={t("贸易条款")}><Input placeholder={t("如 CFR、FOB")} /></Form.Item>
             <Form.Item name="paymentMethod" label={t("付款方式")}><Input placeholder={t("如 TT AD、LC")} /></Form.Item>
@@ -449,7 +460,7 @@ export function CustomerOrders({
               <Descriptions.Item label={t("客户")}>{customerName ?? text(detail, "customerName")}</Descriptions.Item>
               <Descriptions.Item label={t("履约状态")}><StatusTag value={String(detail.status)} /></Descriptions.Item>
               <Descriptions.Item label={t("下单日期")}>{text(detail, "orderDate")}</Descriptions.Item>
-              <Descriptions.Item label={t("产品型号 / 牌号")}>{detail.grade ? `${detail.className} / ${detail.grade}` : "-"}</Descriptions.Item>
+              <Descriptions.Item label={t("产品")}>{detail.grade ? `${detail.className} / ${detail.grade}` : "-"}</Descriptions.Item>
               <Descriptions.Item label={t("数量")}>{formatNumber(detail.quantity)}</Descriptions.Item>
               <Descriptions.Item label={t("单价")}>{`${formatNumber(detail.price)} ${detail.currency || ""}`}</Descriptions.Item>
               <Descriptions.Item label={t("金额")}>{`${formatNumber(detail.amount)} ${detail.currency || ""}`}</Descriptions.Item>

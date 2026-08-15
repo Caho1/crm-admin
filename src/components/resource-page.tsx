@@ -32,6 +32,7 @@ import type { TranslateVars } from "@/lib/i18n";
 import { apiFetch } from "@/lib/client-fetch";
 import { dictLabel, dictLabelOf, type DictType } from "@/lib/dicts";
 import {
+  FormValuesReset,
   ResourceFormFields,
   buildCustomerFields,
   customerFormValues,
@@ -54,13 +55,16 @@ type Column = {
   key?: string;
   width?: number;
   ellipsis?: boolean;
-  kind?: "primary" | "status" | "product" | "money" | "date" | "number" | "dict";
+  kind?: "primary" | "status" | "product" | "money" | "date" | "number" | "dict" | "competitors";
   dictType?: DictType;
   classField?: string;
   currencyField?: string;
 };
-/** 由标签字典驱动的列表筛选下拉 */
-type DictFilter = { key: string; dictType: DictType; placeholder: string };
+/**
+ * 列表筛选下拉：选项要么来自标签字典（dictType），
+ * 要么来自库里实际录入过的值（source，如手填的行业）
+ */
+type DictFilter = { key: string; placeholder: string; dictType?: DictType; source?: "industries" };
 // 栏目名由 AppShell 顶栏统一展示，Config 不再带 title
 type Config = {
   endpoint: string;
@@ -88,20 +92,21 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       endpoint: "/api/customers",
       createLabel: t("新建客户"),
       editLabel: t("编辑客户"),
-      searchPlaceholder: t("名称、负责人、联系人、地址、分类、行业"),
+      searchPlaceholder: t("名称、简称、负责人、联系人、地址、分类、行业"),
       filterKey: "status",
       filterPlaceholder: t("客户状态"),
       filterOptions: customerStatuses,
       dictFilters: [
         { key: "category", dictType: "customer_category", placeholder: t("全部分类") },
-        { key: "industry", dictType: "industry", placeholder: t("全部行业") },
+        { key: "industry", source: "industries", placeholder: t("全部行业") },
       ],
       columns: [
         { title: t("客户名称"), dataIndex: "name", width: 200, kind: "primary", ellipsis: true },
+        { title: t("简称"), dataIndex: "shortName", width: 110, ellipsis: true },
         { title: t("英文名称"), dataIndex: "nameEn", width: 190, ellipsis: true },
         { title: t("客户分类"), dataIndex: "category", width: 110, kind: "dict", dictType: "customer_category" },
         { title: t("国家 / 地区"), key: "location", width: 130 },
-        { title: t("行业"), dataIndex: "industry", width: 110, kind: "dict", dictType: "industry" },
+        { title: t("行业"), dataIndex: "industry", width: 110, ellipsis: true },
         { title: t("负责人"), dataIndex: "ownerName", width: 100 },
         { title: t("协作人"), dataIndex: "memberNames", width: 110, ellipsis: true },
         { title: t("最近拜访"), dataIndex: "latestVisitDate", width: 110, kind: "date" },
@@ -110,13 +115,13 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       ],
       // 字段配置与客户详情页的编辑弹窗共用，见 customer-form.tsx
       fields: buildCustomerFields(t),
-      defaults: (userId) => ({ status: "potential", ownerId: userId, memberIds: [] }),
+      defaults: (userId) => ({ status: "potential", ownerId: userId, memberIds: [], contacts: [] }),
     },
     products: {
       endpoint: "/api/products",
       createLabel: t("新建产品"),
       editLabel: t("编辑产品"),
-      searchPlaceholder: t("产品大类、型号/牌号、品牌、供应商"),
+      searchPlaceholder: t("产品大类、型号/牌号、品牌、供应商、竞争型号"),
       filterKey: "status",
       filterPlaceholder: t("产品状态"),
       filterOptions: [{ label: t("启用"), value: "active" }, { label: t("停用"), value: "inactive" }],
@@ -127,11 +132,13 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
         { title: t("型号 / 牌号（Grade）"), dataIndex: "grade", width: 180, kind: "primary" },
         { title: t("品牌"), dataIndex: "brand", width: 130, ellipsis: true },
         { title: t("供应商"), dataIndex: "supplier", width: 140, ellipsis: true },
+        { title: t("竞争型号"), key: "competitors", width: 200, kind: "competitors" },
         { title: t("用途"), dataIndex: "application", width: 200, ellipsis: true },
         { title: t("订单"), dataIndex: "orderCount", width: 70, kind: "number" },
         { title: t("状态"), dataIndex: "status", width: 85, kind: "status" },
       ],
       fields: [
+        { name: "__basic", label: t("基本产品信息"), type: "section" },
         { name: "className", label: t("产品大类"), type: "select", dictType: "product_class", required: true },
         { name: "grade", label: t("型号 / 牌号（Grade）"), type: "input", required: true },
         { name: "brand", label: t("品牌"), type: "input" },
@@ -139,8 +146,9 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
         { name: "status", label: t("产品状态"), type: "select", required: true, options: [{ label: t("启用"), value: "active" }, { label: t("停用"), value: "inactive" }] },
         { name: "application", label: t("产品用途"), type: "textarea", rows: 3, full: true, maxLength: 500 },
         { name: "notes", label: t("备注"), type: "textarea", rows: 3, full: true, maxLength: 2000 },
+        { name: "competitors", label: t("竞争型号对比"), type: "competitors", full: true },
       ],
-      defaults: () => ({ status: "active" }),
+      defaults: () => ({ status: "active", competitors: [] }),
     },
   };
 }
@@ -170,9 +178,9 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
   const [filter, setFilter] = useState<string | undefined>();
   // 标签筛选统一放一个 map 里：新增一类标签筛选不用再加一个 useState
   const [dictFilter, setDictFilter] = useState<Record<string, string | undefined>>({});
-  // 卡片 / 列表视图切换：只有客户列表提供卡片视图，选择记在 localStorage
+  // 卡片 / 列表视图切换：只有客户列表提供卡片视图，默认卡片，切换后的选择记在 localStorage
   const supportsCards = resource === "customers";
-  const [view, setView] = useState<"list" | "card">("list");
+  const [view, setView] = useState<"list" | "card">("card");
   useEffect(() => {
     if (!supportsCards) return;
     const saved = window.localStorage.getItem("crm_customers_view");
@@ -378,6 +386,21 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
           if (!code) return <span className={styles.muted}>-</span>;
           return <Tag>{dictLabelOf(column.dictType ? lookups.dicts?.[column.dictType] : undefined, code, locale)}</Tag>;
         }
+        if (column.kind === "competitors") {
+          // 竞品可能有几十条，列表只出前 3 条，其余折成「+N」，完整清单在编辑弹窗里
+          const items = (record.competitors as Array<{ id: number; grade: string; manufacturer: string }> | undefined) || [];
+          if (!items.length) return <span className={styles.muted}>-</span>;
+          const label = (item: { grade: string; manufacturer: string }) =>
+            item.manufacturer ? `${item.grade}（${item.manufacturer}）` : item.grade;
+          return (
+            <Tooltip title={items.map(label).join("、")}>
+              <span className={styles.competitors}>
+                {items.slice(0, 3).map((item) => <Tag key={item.id}>{label(item)}</Tag>)}
+                {items.length > 3 ? <span className={styles.muted}>+{items.length - 3}</span> : null}
+              </span>
+            </Tooltip>
+          );
+        }
         if (column.kind === "product") {
           if (!record.grade) return <span className={styles.muted}>-</span>;
           return <span className={styles.product}><span className={styles.productClass}>{String(record.className)}</span>{String(record.grade)}</span>;
@@ -448,7 +471,9 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
             optionFilterProp="label"
             placeholder={item.placeholder}
             value={dictFilter[item.key]}
-            options={(lookups.dicts?.[item.dictType] || []).map((option) => ({ value: option.code, label: dictLabel(option, locale) }))}
+            options={item.dictType
+              ? (lookups.dicts?.[item.dictType] || []).map((option) => ({ value: option.code, label: dictLabel(option, locale) }))
+              : (lookups[item.source || "industries"] || []).map((value) => ({ value, label: value }))}
             onChange={(value) => { setDictFilter((prev) => ({ ...prev, [item.key]: value })); setPage(1); }}
           />
         ))}
@@ -470,7 +495,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
           {loading && !rows.length ? null : rows.length ? rows.map((record) => {
             const location = [record.country, record.region].filter(Boolean).join(" / ");
             const category = dictLabelOf(lookups.dicts?.customer_category, String(record.category || ""), locale);
-            const industry = dictLabelOf(lookups.dicts?.industry, String(record.industry || ""), locale);
+            const industry = String(record.industry || "");
             const statusLabelText = config.filterOptions?.find((option) => option.value === record.status)?.label;
             return (
               <article key={record.id} className={styles.customerCard}>
@@ -479,7 +504,10 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
                     <button type="button" className={styles.cardName} onClick={() => viewCustomer(record)}>
                       {String(record.name || "-")}
                     </button>
-                    {record.nameEn ? <div className={styles.cardNameEn}>{String(record.nameEn)}</div> : null}
+                    {/* 简称与英文名共用一行副标题，简称在前，便于按日常叫法认人 */}
+                    {record.shortName || record.nameEn ? (
+                      <div className={styles.cardNameEn}>{[record.shortName, record.nameEn].filter(Boolean).join(" · ")}</div>
+                    ) : null}
                   </div>
                   <StatusTag value={String(record.status || "")} label={statusLabelText} />
                 </div>
@@ -494,22 +522,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
                   <div><dt>{t("订单")}</dt><dd>{formatNumber(record.orderCount)}</dd></div>
                 </dl>
                 <div className={styles.cardAddress}>{String(record.address || "-")}</div>
-                <div className={styles.cardActions}>
-                  <Button size="small" icon={<EyeOutlined />} onClick={() => viewCustomer(record)}>{t("查看")}</Button>
-                  {canWrite && record.canEdit !== 0 ? (
-                    <Button size="small" icon={<EditOutlined />} onClick={() => void openEdit(record)}>{t("编辑")}</Button>
-                  ) : null}
-                  {canWrite && record.canEdit !== 0 ? (
-                    <Popconfirm
-                      title={t("确认删除「{name}」？", { name: recordLabel(record) })}
-                      okText={t("确认")}
-                      cancelText={t("取消")}
-                      onConfirm={() => void remove(record)}
-                    >
-                      <Button size="small" danger icon={<DeleteOutlined />} aria-label={t("删除")} />
-                    </Popconfirm>
-                  ) : null}
-                </div>
+                {/* 卡片不再挂操作按钮：点客户名进详情，编辑与删除都在详情页里 */}
               </article>
             );
           }) : (
@@ -574,8 +587,11 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
         destroyOnHidden
         styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "auto", paddingRight: 4 } }}
       >
-        {/* destroyOnHidden 保证每次打开重新挂载，initialValues 在首帧即生效，避免先空后填的闪烁 */}
-        <Form form={form} layout="vertical" requiredMark="optional" preserve={false} initialValues={initialValues}>
+        {/* destroyOnHidden 保证每次打开重新挂载，initialValues 在首帧即生效，避免先空后填的闪烁。
+            这里不能用 preserve={false}：它会把 Form.List（客户联系人）里的初始值清掉，
+            连续编辑多条记录时的残留值改由打开时的 resetFields 处理 */}
+        <Form form={form} layout="vertical" requiredMark={false} initialValues={initialValues}>
+          <FormValuesReset values={initialValues} />
           <ResourceFormFields fields={config.fields} lookups={lookups} editing={Boolean(editing)} />
         </Form>
       </Modal>

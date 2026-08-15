@@ -1,7 +1,7 @@
 {
   "name": "sales-crm-admin",
   "productName": "CRM-Admin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -13,7 +13,9 @@
     "electron": "electron .",
     "electron:rebuild": "electron-rebuild -f -w better-sqlite3",
     "electron:pack": "npm run build && electron-rebuild -f -w better-sqlite3 && node scripts/copy-sqlite-build.mjs && electron-builder && rm -rf node_modules/better-sqlite3/build && npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 ABI OK for dev')\"",
-    "electron:pack:dir": "npm run build && electron-rebuild -f -w better-sqlite3 && node scripts/copy-sqlite-build.mjs && electron-builder --dir && rm -rf node_modules/better-sqlite3/build && npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 ABI OK for dev')\""
+    "electron:pack:dir": "npm run build && electron-rebuild -f -w better-sqlite3 && node scripts/copy-sqlite-build.mjs && electron-builder --dir && rm -rf node_modules/better-sqlite3/build && npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 ABI OK for dev')\"",
+    "electron:pack:win": "npm run build && node scripts/fetch-sqlite-prebuild.mjs win32 x64 && node scripts/copy-sqlite-build.mjs && electron-builder --win nsis --x64 && node scripts/verify-installer.mjs && rm -rf node_modules/better-sqlite3/build && npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 ABI OK for dev')\"",
+    "verify:installer": "node scripts/verify-installer.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",

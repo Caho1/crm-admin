@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TranslateVars } from "@/lib/i18n";
 import { apiFetch } from "@/lib/client-fetch";
 import { dictLabel, type DictMap, type DictType } from "@/lib/dicts";
+import { CompetitorsField } from "./competitor-fields";
+import { ContactsField, type ContactValue } from "./contact-fields";
 import { useLocale } from "./providers";
 import { useCurrentUser } from "./user-context";
 import styles from "./resource-page.module.css";
@@ -12,8 +14,9 @@ import styles from "./resource-page.module.css";
 export type TFn = (text: string, vars?: TranslateVars) => string;
 export type Option = { label: string; value: string | number };
 export type LookupItem = { id: number; name?: string; label?: string; className?: string; grade?: string; role?: string; status?: string };
-export type Lookups = { customers: LookupItem[]; products: LookupItem[]; users: LookupItem[]; dicts: DictMap };
-export type FieldType = "input" | "textarea" | "select" | "multi" | "date" | "month" | "number";
+/** industries：客户表里实际录入过的行业（去重），供列表筛选下拉用，不是标签字典 */
+export type Lookups = { customers: LookupItem[]; products: LookupItem[]; users: LookupItem[]; dicts: DictMap; industries: string[] };
+export type FieldType = "input" | "textarea" | "select" | "multi" | "date" | "month" | "number" | "contacts" | "competitors" | "section";
 export type Field = {
   name: string;
   label: string;
@@ -32,7 +35,7 @@ export type Field = {
   maxLength?: number;
 };
 
-export const emptyLookups: Lookups = { customers: [], products: [], users: [], dicts: {} };
+export const emptyLookups: Lookups = { customers: [], products: [], users: [], dicts: {}, industries: [] };
 
 export function optionsFor(field: Field, lookups: Lookups, t: TFn, editing: boolean, locale: string): Option[] {
   if (field.options) return field.options;
@@ -60,6 +63,27 @@ export function ResourceFormFields({ fields, lookups, editing }: { fields: Field
   const user = useCurrentUser();
 
   const renderField = (field: Field) => {
+    // 分区标题：把「基本信息」「联系人」这样的大块隔开
+    if (field.type === "section") {
+      return <div key={field.name} className={`${styles.fieldFull} ${styles.sectionTitle}`}>{field.label}</div>;
+    }
+    // 联系人是一组可增删的子表单，不走单控件那套渲染；
+    // 分区标题由 ContactsField 自己出（第一条不再重复标题，第二条起才带序号）
+    if (field.type === "contacts") {
+      return (
+        <div key={field.name} className={styles.fieldFull}>
+          <ContactsField name={field.name} label={field.label} />
+        </div>
+      );
+    }
+    // 竞争型号同样是可增删的子表单，分区标题由 CompetitorsField 自己出
+    if (field.type === "competitors") {
+      return (
+        <div key={field.name} className={styles.fieldFull}>
+          <CompetitorsField name={field.name} label={field.label} />
+        </div>
+      );
+    }
     const commonSelectProps = {
       showSearch: true,
       allowClear: !field.required,
@@ -78,6 +102,10 @@ export function ResourceFormFields({ fields, lookups, editing }: { fields: Field
     return (
       <Form.Item
         key={field.name}
+        // 标签在左、控件在右，和联系人子表单保持一致，也省一半纵向空间
+        layout="horizontal"
+        labelCol={{ flex: "118px" }}
+        wrapperCol={{ flex: "auto" }}
         className={field.full ? styles.fieldFull : undefined}
         name={field.name}
         label={field.label}
@@ -91,6 +119,19 @@ export function ResourceFormFields({ fields, lookups, editing }: { fields: Field
   return <div className={styles.formGrid}>{fields.filter((field) => !field.adminOnly || user.role === "admin").map(renderField)}</div>;
 }
 
+/**
+ * 弹窗表单的 form 实例是跨记录复用的，上一条记录的值会留在 store 里。
+ * 以前靠 preserve={false} 清，但那会把 Form.List（联系人）的初始值一并清掉，
+ * 改为在表单内部挂载时按最新 initialValues 重置一次（挂在 Form 里才保证实例已连接）。
+ */
+export function FormValuesReset({ values }: { values: unknown }) {
+  const form = Form.useFormInstance();
+  useEffect(() => {
+    form.resetFields();
+  }, [form, values]);
+  return null;
+}
+
 export function customerStatusOptions(t: TFn): Option[] {
   return [
     { label: t("潜在客户"), value: "potential" },
@@ -101,38 +142,49 @@ export function customerStatusOptions(t: TFn): Option[] {
 
 export function buildCustomerFields(t: TFn): Field[] {
   return [
-    { name: "name", label: t("客户名称（中文）"), type: "input", required: true, full: true },
-    { name: "nameEn", label: t("客户名称（英文）"), type: "input", full: true, placeholder: t("完整英文名称，便于按英文模糊查找") },
+    { name: "__basic", label: t("基本信息"), type: "section" },
+    { name: "name", label: t("客户名称"), type: "input", required: true, full: true },
+    { name: "nameEn", label: t("英文名称"), type: "input", full: true, placeholder: t("完整英文名称，便于按英文模糊查找") },
+    { name: "shortName", label: t("客户简称"), type: "input", full: true, placeholder: t("日常沟通用的简称，搜索时同样可按简称查找") },
     { name: "category", label: t("客户分类"), type: "select", dictType: "customer_category" },
     { name: "status", label: t("客户状态"), type: "select", required: true, options: customerStatusOptions(t) },
-    { name: "industry", label: t("行业"), type: "select", dictType: "industry" },
+    // 行业按客户实际说法手填，不走标签配置：口径太细，穷举成下拉反而卡住录入
+    { name: "industry", label: t("行业"), type: "input", placeholder: t("如 注塑加工、家电制造") },
     { name: "ownerId", label: t("负责人"), type: "select", source: "users", adminOnly: true },
     { name: "country", label: t("国家"), type: "input" },
     { name: "region", label: t("地区"), type: "input" },
     { name: "memberIds", label: t("协作成员"), type: "multi", source: "users", adminOnly: true },
     { name: "address", label: t("详细地址"), type: "input", full: true, placeholder: t("详细到街道门牌，搜索时可按地址关键词查找") },
     { name: "description", label: t("客户简介"), type: "textarea", rows: 3, full: true, maxLength: 2000 },
-    { name: "contactName", label: t("主要联系人"), type: "input" },
-    { name: "contactTitle", label: t("联系人职位"), type: "input" },
-    { name: "contactPhone", label: t("联系电话"), type: "input" },
-    { name: "contactEmail", label: t("联系邮箱"), type: "input" },
+    { name: "contacts", label: t("联系人"), type: "contacts", full: true },
   ];
 }
 
-/** 客户详情接口的返回值摊平成编辑表单的初始值（主联系人取第一条） */
+/** 客户详情接口的返回值摊平成编辑表单的初始值 */
 export function customerFormValues(detail: {
   customer: Record<string, unknown>;
   contacts?: Array<Record<string, unknown>>;
   members?: Array<{ id: number }>;
 }): Record<string, unknown> {
-  const firstContact = detail.contacts?.[0] || {};
+  const customerId = detail.customer?.id;
+  // 名片图片不随详情下发，表单只拿到读取地址用于回显；updatedAt 当版本号，换图后不吃旧缓存
+  const version = encodeURIComponent(String(detail.customer?.updatedAt || ""));
+  const cardUrl = (contactId: unknown, side: "front" | "back") =>
+    `/api/customers/${customerId}/contacts/${contactId}/card?side=${side}&v=${version}`;
   return {
     ...detail.customer,
     memberIds: (detail.members || []).map((item) => item.id),
-    contactName: firstContact.name || "",
-    contactTitle: firstContact.title || "",
-    contactPhone: firstContact.phone || "",
-    contactEmail: firstContact.email || "",
+    contacts: (detail.contacts || []).map((contact): ContactValue => ({
+      id: Number(contact.id),
+      name: String(contact.name || ""),
+      nameEn: String(contact.nameEn || ""),
+      title: String(contact.title || ""),
+      phone: String(contact.phone || ""),
+      email: String(contact.email || ""),
+      personality: String(contact.personality || ""),
+      cardFrontUrl: contact.hasCardFront ? cardUrl(contact.id, "front") : undefined,
+      cardBackUrl: contact.hasCardBack ? cardUrl(contact.id, "back") : undefined,
+    })),
   };
 }
 
@@ -233,9 +285,12 @@ export function CustomerEditModal({
       destroyOnHidden
       styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "auto", paddingRight: 4 } }}
     >
-      {/* destroyOnHidden 保证每次打开重新挂载，initialValues 在首帧即生效，避免先空后填的闪烁 */}
+      {/* destroyOnHidden 保证每次打开重新挂载，initialValues 在首帧即生效，避免先空后填的闪烁。
+          这里不能用 preserve={false}：它会把 Form.List（联系人）里的初始值清掉，
+          重复打开时的残留值改由下面的 resetFields 处理 */}
       {initialValues ? (
-        <Form form={form} layout="vertical" requiredMark="optional" preserve={false} initialValues={initialValues}>
+        <Form form={form} layout="vertical" requiredMark={false} initialValues={initialValues}>
+          <FormValuesReset values={initialValues} />
           <ResourceFormFields fields={fields} lookups={lookups} editing />
         </Form>
       ) : (

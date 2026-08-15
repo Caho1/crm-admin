@@ -8,8 +8,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "销售业务管理系统",
-    template: "%s | 销售业务管理系统",
+    default: "客户管理系统",
+    template: "%s | 客户管理系统",
   },
   description: "客户、拜访、商机与订单出货管理后台",
 };

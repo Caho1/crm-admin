@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ContactsOutlined,
   DashboardOutlined,
   DownOutlined,
   GlobalOutlined,
@@ -27,10 +28,10 @@ function Brand() {
   const { t } = useLocale();
   return (
     <div className={styles.brand}>
-      <div className={styles.brandMark}>S</div>
+      <div className={styles.brandMark}><ContactsOutlined /></div>
       <div className={styles.brandText}>
-        <div className={styles.brandTitle}>{t("销售业务管理系统")}</div>
-        <div className={styles.brandSub}>SALES OPERATIONS</div>
+        <div className={styles.brandTitle}>{t("客户管理系统")}</div>
+        <div className={styles.brandSub}>CUSTOMER MANAGEMENT</div>
       </div>
     </div>
   );

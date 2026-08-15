@@ -177,6 +177,19 @@
   white-space: nowrap;
 }
 
+/* 竞品标签只出前几条，单行内截断，完整清单走 Tooltip */
+.competitors {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.competitors :global(.ant-tag) {
+  margin-inline-end: 2px;
+}
+
 /* 操作列是 flex 按钮组，表格整体居中后这里也跟着居中 */
 .rowActions {
   display: flex;
@@ -188,6 +201,50 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 18px;
+}
+
+/* 分区标题：左侧主色竖条 + 加粗标题，把「基本信息」「联系人」隔开 */
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: #101828;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sectionTitle::before {
+  content: "";
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--primary);
+}
+
+/* 标签在左、控件在右：行距收紧，长标签允许折行而不是撑破布局 */
+.formGrid > :global(.ant-form-item) {
+  margin-bottom: 14px;
+}
+
+/* 标签列和控件必须同行：窄弹窗里 antd 的 Row 默认会换行，把标签挤到控件上方 */
+.formGrid :global(.ant-form-item-row) {
+  flex-wrap: nowrap;
+}
+
+.formGrid :global(.ant-form-item-control) {
+  min-width: 0;
+}
+
+.formGrid :global(.ant-form-item-label) {
+  text-align: right;
+}
+
+.formGrid :global(.ant-form-item-label > label) {
+  height: auto;
+  min-height: 32px;
+  color: #475467;
+  white-space: normal;
 }
 
 .fieldFull {
@@ -359,13 +416,6 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-.cardActions {
-  display: flex;
-  gap: 6px;
-  padding-top: 10px;
-  border-top: 1px solid #f0f3f7;
 }
 
 .cardPagination {

@@ -3,7 +3,7 @@
 const { app, BrowserWindow, shell, Menu } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 
 const isDev = !app.isPackaged;
 const PORT = Number(process.env.CRM_PORT || (isDev ? 8003 : 8123));
@@ -44,6 +44,28 @@ function startServer(databaseUrl) {
       console.error(`[crm] Next server exited with code ${code}`);
     }
   });
+}
+
+/**
+ * 收掉 Next 服务子进程。
+ * 它是以 ELECTRON_RUN_AS_NODE 方式跑的同名 exe，没有窗口：
+ * 一旦残留就会占着端口，Windows 上还会让新版安装器一直提示「无法关闭，请手动关闭」。
+ * Windows 的 kill() 不管孙进程，这里用 taskkill 连整棵进程树一起收；
+ * 退出路径可能走多条，做成幂等的，重复调用无副作用。
+ */
+function stopServer() {
+  const child = serverProcess;
+  serverProcess = null;
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  try {
+    if (process.platform === "win32") {
+      spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      child.kill("SIGTERM");
+    }
+  } catch (error) {
+    console.error("[crm] 停止 Next 服务失败", error);
+  }
 }
 
 /** 轮询等待服务可用，避免窗口比服务先就绪导致白屏 */
@@ -131,5 +153,20 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   app.isQuiting = true;
-  if (serverProcess) serverProcess.kill();
+  stopServer();
+});
+
+// 正常退出、强制退出、主进程崩溃，都别把 Next 服务留成孤儿进程
+app.on("will-quit", stopServer);
+process.on("exit", stopServer);
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, () => {
+    stopServer();
+    app.exit(0);
+  });
+}
+process.on("uncaughtException", (error) => {
+  console.error("[crm] 主进程未捕获异常", error);
+  stopServer();
+  app.exit(1);
 });

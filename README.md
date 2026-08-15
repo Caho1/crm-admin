@@ -1,4 +1,4 @@
-# 销售业务管理系统
+# 客户管理系统
 
 面向 10-20 人销售团队的轻量后台，使用 Next.js、Ant Design 和 SQLite 构建。
 
@@ -41,5 +41,23 @@ npm run lint
 npm run build
 npm start
 ```
+
+## 打包 Windows 安装包
+
+```bash
+npm run electron:pack:win
+```
+
+产物在 `release/`。打包末尾会自动跑 `scripts/verify-installer.mjs`，比对 `latest.yml` 里的体积与 sha512，并打印安装包的 SHA256。
+
+把 exe 传到 Windows（网盘 / 微信 / U 盘都可能截断文件）后，**装之前先在那台机器上核一次**，与打包时打印的值一致再双击安装：
+
+```bash
+certutil -hashfile "CRM-Admin Setup 0.2.0.exe" SHA256
+```
+
+对不上就是传输过程中损坏，重新传一次即可 —— 安装器报 `Installer integrity check has failed` 就是这个原因。已单独拿到的安装包也可以随时用 `npm run verify:installer` 复核。
+
+安装 / 卸载开始前，`build/installer.nsh` 会按进程名结束正在运行的应用（含以 node 模式跑 Next 服务的同名子进程），结束不掉时提示手动退出后重试，避免带着占用安装。
 
 可复制 `.env.example` 配置数据库路径和会话有效天数。SQLite 适合当前小团队规模，正式环境应部署在带持久磁盘的单实例服务器，并定期备份数据库文件。

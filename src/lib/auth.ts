@@ -16,6 +16,16 @@ function sessionDays() {
   return Number.isFinite(configured) && configured > 0 ? configured : 7;
 }
 
+/**
+ * 会话 Cookie 默认在生产模式下带 Secure，浏览器只在 HTTPS 下保存它。
+ * 内网 / 预览环境若只能走 http://IP:端口，登录会「成功但仍未登录」，
+ * 这时用 INSECURE_COOKIE=1 显式关掉 —— 正式对外部署不要开，
+ * 关掉后会话令牌是明文传输的。
+ */
+function secureCookie() {
+  return process.env.NODE_ENV === "production" && process.env.INSECURE_COOKIE !== "1";
+}
+
 export async function verifyCredentials(username: string, password: string) {
   const db = getDb();
   const user = db
@@ -50,7 +60,7 @@ export async function createSession(userId: number) {
   store.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookie(),
     path: "/",
     expires: expiresAt,
   });
@@ -65,7 +75,7 @@ export async function destroySession() {
   store.set(SESSION_COOKIE, "", {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookie(),
     path: "/",
     maxAge: 0,
   });

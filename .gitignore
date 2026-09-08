@@ -44,6 +44,9 @@ yarn-error.log*
 *.xlsx
 *.xls
 
+# 服务器连接信息（IP / 账号 / 目录）：仓库公开，这些不入库
+DEPLOY.local.md
+
 # vercel
 .vercel
 

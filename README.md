@@ -42,6 +42,10 @@ npm run build
 npm start
 ```
 
+## Web 服务器部署（预览 / 正式环境）
+
+把 Next.js 服务端直接跑在 Linux 服务器上（不打包 Electron）的完整流程、原生模块（better-sqlite3）跨平台注意事项、内存受限服务器的构建策略，见 [DEPLOY.md](./DEPLOY.md)。
+
 ## 打包 Windows 安装包
 
 ```bash

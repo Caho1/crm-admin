@@ -40,6 +40,10 @@ yarn-error.log*
 /data/*.db
 /data/*.db-*
 
+# 真实业务数据表（客户/订单等），别混进这个公开仓库
+*.xlsx
+*.xls
+
 # vercel
 .vercel
 

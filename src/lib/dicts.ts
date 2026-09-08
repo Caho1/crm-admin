@@ -4,6 +4,8 @@
 export const DICT_TYPES = [
   { type: "customer_category", label: "客户分类" },
   { type: "product_class", label: "产品大类 / 材料分类" },
+  { type: "order_nature", label: "订单性质" },
+  { type: "production_base", label: "生产基地" },
 ] as const;
 
 export type DictType = (typeof DICT_TYPES)[number]["type"];

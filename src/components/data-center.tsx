@@ -1,14 +1,15 @@
 "use client";
 
 import { DownloadOutlined, FileExcelOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Empty, Table, Tabs, Tag, Upload, type TableProps, type UploadFile } from "antd";
-import { useState } from "react";
+import { Alert, App, Button, Checkbox, Empty, Table, Tabs, Tag, Upload, type TableProps, type UploadFile } from "antd";
+import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { useLocale } from "./providers";
 import styles from "./data-center.module.css";
 
 type ImportMode = "create" | "update";
 type PreviewRow = Record<string, unknown> & { mode?: ImportMode };
+type ProductRef = { className: string; grade: string };
 type ImportResult = {
   valid: boolean;
   totalRows?: number;
@@ -18,6 +19,11 @@ type ImportResult = {
   imported?: number;
   errors: Array<{ row: number; message: string }>;
   preview?: PreviewRow[];
+  /** 仅订单导入才有：报错里提到的、系统里还没有的客户/产品，用来问「要不要顺手新建」 */
+  missingCustomers?: string[];
+  missingProducts?: ProductRef[];
+  /** 报错是不是清一色「客户/产品不存在」——夹了别的错误就不提供一键新建，得先把文件改对 */
+  onlyMissingReferences?: boolean;
 };
 
 type PanelConfig = {
@@ -30,6 +36,8 @@ type PanelConfig = {
   hint: string;
   columns: TableProps<PreviewRow>["columns"];
   rowKey: (row: PreviewRow, index?: number) => string;
+  /** 只有订单导入支持「缺客户/产品就顺手新建」 */
+  allowMissingCreate?: boolean;
 };
 
 function ImportPanel({ config }: { config: PanelConfig }) {
@@ -39,8 +47,16 @@ function ImportPanel({ config }: { config: PanelConfig }) {
   const [checking, setChecking] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
+  // 缺失客户/产品的勾选名单：默认全选，用户可以取消个别项再新建
+  const [checkedCustomers, setCheckedCustomers] = useState<string[]>([]);
+  const [checkedProducts, setCheckedProducts] = useState<ProductRef[]>([]);
 
-  const upload = async (commit: boolean) => {
+  useEffect(() => {
+    setCheckedCustomers(result?.missingCustomers ?? []);
+    setCheckedProducts(result?.missingProducts ?? []);
+  }, [result?.missingCustomers, result?.missingProducts]);
+
+  const upload = async (commit: boolean, extra?: { createCustomers?: string[]; createProducts?: ProductRef[] }) => {
     const file = fileList[0]?.originFileObj;
     if (!file) {
       message.warning(t("请先选择导入文件"));
@@ -52,13 +68,19 @@ function ImportPanel({ config }: { config: PanelConfig }) {
       const form = new FormData();
       form.append("file", file);
       form.append("commit", String(commit));
+      if (extra?.createCustomers?.length) form.append("createCustomers", JSON.stringify(extra.createCustomers));
+      if (extra?.createProducts?.length) form.append("createProducts", JSON.stringify(extra.createProducts));
       const response = await apiFetch(config.endpoint, { method: "POST", body: form });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message || "Excel 处理失败");
       setResult(payload.data);
       if (commit) {
-        message.success(t("新增 {created} 条，更新 {updated} 条", { created: payload.data.createCount ?? 0, updated: payload.data.updateCount ?? 0 }));
-        setFileList([]);
+        if (payload.data.valid) {
+          message.success(t("新增 {created} 条，更新 {updated} 条", { created: payload.data.createCount ?? 0, updated: payload.data.updateCount ?? 0 }));
+          setFileList([]);
+        } else {
+          message.warning(t("预检发现错误，请修正后重新上传"));
+        }
       } else if (payload.data.valid) {
         message.success(t("预检通过，可以确认导入"));
       } else {
@@ -73,6 +95,10 @@ function ImportPanel({ config }: { config: PanelConfig }) {
   };
 
   const done = result?.imported !== undefined;
+  const showMissingCreate = Boolean(
+    config.allowMissingCreate && !done && result && !result.valid && result.onlyMissingReferences
+    && ((result.missingCustomers?.length ?? 0) > 0 || (result.missingProducts?.length ?? 0) > 0),
+  );
 
   return (
     <div>
@@ -124,9 +150,57 @@ function ImportPanel({ config }: { config: PanelConfig }) {
                 action={<Button size="small" href="/customers">{t("查看客户")}</Button>}
               />
             ) : result.errors.length ? (
-              <ul className={styles.errorList}>
-                {result.errors.map((error) => <li key={`${error.row}-${error.message}`}>{t("第 {row} 行", { row: error.row })}：{error.message}</li>)}
-              </ul>
+              <>
+                {showMissingCreate ? (
+                  <Alert
+                    showIcon
+                    type="warning"
+                    className={styles.missingAlert}
+                    title={t("文件里有客户 / 产品在系统中还不存在，是否新建后继续导入？")}
+                    description={
+                      <div className={styles.missingBody}>
+                        {result.missingCustomers?.length ? (
+                          <div className={styles.missingGroup}>
+                            <div className={styles.missingGroupTitle}>{t("新建客户（{n} 个）", { n: result.missingCustomers.length })}</div>
+                            <Checkbox.Group
+                              className={styles.missingList}
+                              value={checkedCustomers}
+                              onChange={(values) => setCheckedCustomers(values as string[])}
+                              options={result.missingCustomers.map((name) => ({ label: name, value: name }))}
+                            />
+                          </div>
+                        ) : null}
+                        {result.missingProducts?.length ? (
+                          <div className={styles.missingGroup}>
+                            <div className={styles.missingGroupTitle}>{t("新建产品（{n} 个）", { n: result.missingProducts.length })}</div>
+                            <Checkbox.Group
+                              className={styles.missingList}
+                              value={checkedProducts.map((item) => `${item.className}||${item.grade}`)}
+                              onChange={(values) => {
+                                const keys = new Set(values as string[]);
+                                setCheckedProducts((result.missingProducts ?? []).filter((item) => keys.has(`${item.className}||${item.grade}`)));
+                              }}
+                              options={(result.missingProducts ?? []).map((item) => ({ label: `${item.className} / ${item.grade}`, value: `${item.className}||${item.grade}` }))}
+                            />
+                          </div>
+                        ) : null}
+                        <Button
+                          type="primary"
+                          size="small"
+                          loading={importing}
+                          disabled={!checkedCustomers.length && !checkedProducts.length}
+                          onClick={() => void upload(true, { createCustomers: checkedCustomers, createProducts: checkedProducts })}
+                        >
+                          {t("新建勾选项并导入")}
+                        </Button>
+                      </div>
+                    }
+                  />
+                ) : null}
+                <ul className={styles.errorList}>
+                  {result.errors.map((error) => <li key={`${error.row}-${error.message}`}>{t("第 {row} 行", { row: error.row })}：{error.message}</li>)}
+                </ul>
+              </>
             ) : result.preview?.length ? (
               <Table
                 rowKey={config.rowKey}
@@ -193,10 +267,11 @@ export function DataCenter() {
     exportLabel: t("导出全部订单"),
     uploadText: t("选择或拖入订单 Excel / CSV"),
     hint: t("支持 .xlsx / .csv，单个文件不超过 5MB；订单编号已存在的行会更新该订单，留空的列保持原值"),
+    allowMissingCreate: true,
     rowKey: (row, index) => `${String(row.orderNo ?? "")}-${index}`,
     columns: [
       modeColumn,
-      { title: t("订单编号"), dataIndex: "orderNo", width: 160 },
+      { title: t("订单编号"), dataIndex: "orderNo", width: 160, render: (value) => (value ? String(value) : t("导入后自动生成")) },
       { title: t("下单日期"), dataIndex: "orderDate", width: 110 },
       { title: t("客户"), dataIndex: "customerName", width: 190, ellipsis: true },
       { title: t("产品"), key: "product", width: 140, render: (_, row) => `${row.className} / ${row.grade}` },

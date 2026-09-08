@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import type Database from "better-sqlite3";
 import { ApiError } from "./api";
 
 export function addCondition(
@@ -42,4 +44,20 @@ export function uniqueCode(prefix: string, exists: (code: string) => boolean) {
     if (!exists(code)) return code;
   }
   throw new ApiError(500, "CODE_GENERATION_FAILED", "编号生成失败，请重试");
+}
+
+/**
+ * 订单编号 / 客户编号这类业务编号，留空时直接用数据库自增 id 当编号：纯数字、天然唯一，
+ * 不会像「日期 + 随机数」那样在同一批导入里撞号。id 要插入后才知道，所以先塞一个占位值，
+ * 插入拿到 id 后再把这一行的编号列改回真正的 id。
+ */
+export function sequentialPlaceholder() {
+  return `__pending__${crypto.randomUUID()}`;
+}
+
+export function finalizeSequentialCode(db: Database.Database, table: string, column: string, id: number, supplied: string | null) {
+  if (supplied) return supplied;
+  const code = String(id);
+  db.prepare(`UPDATE ${table} SET ${column} = ? WHERE id = ?`).run(code, id);
+  return code;
 }

@@ -163,6 +163,8 @@ CREATE TABLE IF NOT EXISTS orders (
   quantity REAL NOT NULL CHECK (quantity > 0),
   price REAL NOT NULL CHECK (price >= 0),
   currency TEXT NOT NULL DEFAULT 'USD',
+  order_nature TEXT NOT NULL DEFAULT '',
+  production_base TEXT NOT NULL DEFAULT '',
   destination TEXT NOT NULL DEFAULT '',
   trade_terms TEXT NOT NULL DEFAULT '',
   payment_method TEXT NOT NULL DEFAULT '',
@@ -179,6 +181,18 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   deleted_at TEXT
+);
+
+-- 型号附件（RAPIDS / TDS / COA 等），只做上传/下载，不做内容预览，随产品一起以 BLOB 存库
+CREATE TABLE IF NOT EXISTS product_attachments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  file_name TEXT NOT NULL,
+  mime_type TEXT NOT NULL DEFAULT '',
+  file_data BLOB NOT NULL,
+  file_size INTEGER NOT NULL DEFAULT 0,
+  uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -201,6 +215,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_shipment ON orders(actual_shipment_date, e
 CREATE INDEX IF NOT EXISTS idx_products_grade ON products(grade, class_name);
 CREATE INDEX IF NOT EXISTS idx_product_competitors_product ON product_competitors(product_id, sort_order, id);
 CREATE INDEX IF NOT EXISTS idx_product_competitors_grade ON product_competitors(grade);
+CREATE INDEX IF NOT EXISTS idx_product_attachments_product ON product_attachments(product_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_dict_items_type ON dict_items(type, status, sort_order);
 `;
@@ -220,10 +235,13 @@ export const columnMigrations: Array<{ table: string; column: string; ddl: strin
   { table: "contacts", column: "card_back_mime", ddl: "ALTER TABLE contacts ADD COLUMN card_back_mime TEXT NOT NULL DEFAULT ''" },
   { table: "contacts", column: "card_back_data", ddl: "ALTER TABLE contacts ADD COLUMN card_back_data BLOB" },
   { table: "contacts", column: "sort_order", ddl: "ALTER TABLE contacts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0" },
+  { table: "orders", column: "order_nature", ddl: "ALTER TABLE orders ADD COLUMN order_nature TEXT NOT NULL DEFAULT ''" },
+  { table: "orders", column: "production_base", ddl: "ALTER TABLE orders ADD COLUMN production_base TEXT NOT NULL DEFAULT ''" },
 ];
 
 // 依赖新增列的索引，必须等 columnMigrations 补完列之后再建
 export const postMigrationSql = `
 CREATE INDEX IF NOT EXISTS idx_customers_category ON customers(category, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_contacts_customer ON contacts(customer_id, sort_order, id);
+CREATE INDEX IF NOT EXISTS idx_orders_nature ON orders(order_nature, deleted_at);
 `;

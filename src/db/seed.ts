@@ -165,15 +165,15 @@ export function seedDatabase(db: Database.Database) {
 
     const insertOrder = db.prepare(`
       INSERT OR IGNORE INTO orders
-        (order_no, order_date, customer_id, product_id, quantity, price, currency, destination,
+        (order_no, order_date, customer_id, product_id, quantity, price, currency, order_nature, production_base, destination,
          trade_terms, payment_method, shipment_month, lc_tt_date, actual_shipment_date,
          expected_arrival_date, contract_no, invoice_no, status, owner_id, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, 'USD', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, 'USD', '成熟', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    insertOrder.run("SO-20260602-01", "2026-06-02", customerId["BEST GAIN"], productId.H1500, 24, 1230, "HONGKONG", "CFR", "TT AD", "2026-07", "2026-06-10", "2026-07-09", "2026-07-19", "20971598", "40279319", "shipped", userId.sales, "首批订单", userId.sales);
-    insertOrder.run("SO-20260619-01", "2026-06-19", customerId["BEST GAIN"], productId.H1500, 24, 1160, "HONGKONG", "CFR", "TT AD", "2026-07", null, "2026-07-15", "2026-07-23", "20973397", "40287964", "confirmed", userId.sales, "", userId.sales);
-    insertOrder.run("SO-20260619-02", "2026-06-19", customerId["BEST GAIN"], productId.H1500, 24, 1160, "HONGKONG", "CFR", "TT AD", "2026-07", null, "2026-07-15", "2026-07-23", "20973397", "40287961", "confirmed", userId.sales, "", userId.sales);
-    insertOrder.run("SO-20260619-03", "2026-06-19", customerId["BEST GAIN"], productId["J-560S"], 16, 1320, "HONGKONG", "CFR", "TT AD", "2026-07", "2026-06-26", null, null, "20973398", "", "planned", userId.sales, "等待确认船期", userId.sales);
+    insertOrder.run("SO-20260602-01", "2026-06-02", customerId["BEST GAIN"], productId.H1500, 24, 1230, "LCC", "HONGKONG", "CFR", "TT AD", "2026-07", "2026-06-10", "2026-07-09", "2026-07-19", "20971598", "40279319", "shipped", userId.sales, "首批订单", userId.sales);
+    insertOrder.run("SO-20260619-01", "2026-06-19", customerId["BEST GAIN"], productId.H1500, 24, 1160, "LCC", "HONGKONG", "CFR", "TT AD", "2026-07", null, "2026-07-15", "2026-07-23", "20973397", "40287964", "confirmed", userId.sales, "", userId.sales);
+    insertOrder.run("SO-20260619-02", "2026-06-19", customerId["BEST GAIN"], productId.H1500, 24, 1160, "LCC", "HONGKONG", "CFR", "TT AD", "2026-07", null, "2026-07-15", "2026-07-23", "20973397", "40287961", "confirmed", userId.sales, "", userId.sales);
+    insertOrder.run("SO-20260619-03", "2026-06-19", customerId["BEST GAIN"], productId["J-560S"], 16, 1320, "LDPC", "HONGKONG", "CFR", "TT AD", "2026-07", "2026-06-26", null, null, "20973398", "", "planned", userId.sales, "等待确认船期", userId.sales);
 
     // ---- 演示用批量订单 ----
     // 固定种子的伪随机：每次生成同一批数据，配合 order_no 的 INSERT OR IGNORE 保证幂等，
@@ -201,6 +201,7 @@ export function seedDatabase(db: Database.Database) {
     ].filter((name) => customerId[name]);
     const demoProducts = Object.keys(productId);
     const destinations = ["HONGKONG", "SHENZHEN", "NINGBO", "BUSAN", "SHANGHAI"];
+    const productionBases = ["HDC", "LCC", "TITAN", "LDPC"];
     const owners = [userId.sales, userId.kim];
 
     // 从今天往回 12 个月，每月 5-9 单，覆盖全部履约状态
@@ -240,6 +241,7 @@ export function seedDatabase(db: Database.Database) {
           productId[grade],
           quantity,
           price,
+          pick(productionBases),
           pick(destinations),
           pick(["CFR", "FOB", "CIF"]),
           pick(["TT AD", "LC 30D", "TT 30D"]),
@@ -271,6 +273,12 @@ export function seedDatabase(db: Database.Database) {
       ["product_class", "PE", "PE", "PE", "PE", 20],
       ["product_class", "PC", "PC", "PC", "PC", 30],
       ["product_class", "EVA", "EVA", "EVA", "EVA", 40],
+      ["order_nature", "成熟", "成熟/稳定订单", "Mature / Stable", "성숙/안정 주문", 10],
+      ["order_nature", "开发", "开发中项目", "In Development", "개발 중", 20],
+      ["production_base", "HDC", "HDC", "HDC", "HDC", 10],
+      ["production_base", "LCC", "LCC", "LCC", "LCC", 20],
+      ["production_base", "TITAN", "TITAN", "TITAN", "TITAN", 30],
+      ["production_base", "LDPC", "LDPC", "LDPC", "LDPC", 40],
     ];
     for (const item of defaultDicts) insertDict.run(...item);
 

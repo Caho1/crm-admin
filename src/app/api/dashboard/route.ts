@@ -12,38 +12,32 @@ export async function GET() {
       return row.count;
     };
 
+    // 币种口径的两张卡（USD 销售 / 人民币采购）统计口径一致，抽成一个函数
+    const currencyOrdersThisMonth = (currency: string) => {
+      const row = db.prepare(`
+        SELECT COUNT(*) AS count, COALESCE(SUM(ord.quantity), 0) AS quantity
+        FROM orders ord JOIN customers c ON c.id = ord.customer_id
+        WHERE ord.deleted_at IS NULL AND ord.status <> 'cancelled' AND ord.currency = ?
+          AND strftime('%Y-%m', ord.order_date) = strftime('%Y-%m', 'now', '+8 hours')
+          AND ${scope.sql}
+      `).get(currency, ...scope.params) as { count: number; quantity: number };
+      return row;
+    };
+
     const stats = {
       customers: scalar(`
         SELECT COUNT(*) AS count FROM customers c
         WHERE c.deleted_at IS NULL AND ${scope.sql}
       `),
-      visitsThisMonth: scalar(`
-        SELECT COUNT(*) AS count FROM visits v
-        JOIN customers c ON c.id = v.customer_id
-        WHERE v.deleted_at IS NULL
-          AND strftime('%Y-%m', v.visit_date) = strftime('%Y-%m', 'now', '+8 hours')
-          AND ${scope.sql}
-      `),
-      ordersThisMonth: scalar(`
+      // "开发" 是订单性质字典里固定不变的 code（建后不可改），与「设置 → 标签配置」里的默认种子数据对应
+      developingProjects: scalar(`
         SELECT COUNT(*) AS count FROM orders ord
         JOIN customers c ON c.id = ord.customer_id
-        WHERE ord.deleted_at IS NULL
-          AND strftime('%Y-%m', ord.order_date) = strftime('%Y-%m', 'now', '+8 hours')
+        WHERE ord.deleted_at IS NULL AND ord.order_nature = '开发'
           AND ${scope.sql}
       `),
-      pendingShipment: scalar(`
-        SELECT COUNT(*) AS count FROM orders ord
-        JOIN customers c ON c.id = ord.customer_id
-        WHERE ord.deleted_at IS NULL AND ord.status = 'confirmed'
-          AND ${scope.sql}
-      `),
-      arrivingSoon: scalar(`
-        SELECT COUNT(*) AS count FROM orders ord
-        JOIN customers c ON c.id = ord.customer_id
-        WHERE ord.deleted_at IS NULL AND ord.status NOT IN ('arrived', 'cancelled')
-          AND ord.expected_arrival_date BETWEEN date('now', '+8 hours') AND date('now', '+8 hours', '+14 day')
-          AND ${scope.sql}
-      `),
+      usdOrders: currencyOrdersThisMonth("USD"),
+      cnyOrders: currencyOrdersThisMonth("CNY"),
     };
 
     const recentVisits = db

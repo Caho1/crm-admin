@@ -3,7 +3,7 @@ import { ApiError, created, handleApiError, ok, paginationFrom, parseBody, requi
 import { writeAudit } from "@/lib/audit";
 import { buildOrderFilters } from "@/lib/order-filters";
 import { assertCustomerAccess, customerCanEdit } from "@/lib/permissions";
-import { uniqueCode, whereSql } from "@/lib/query";
+import { finalizeSequentialCode, sequentialPlaceholder, whereSql } from "@/lib/query";
 import { orderSchema } from "@/lib/validation";
 
 export async function GET(request: Request) {
@@ -21,7 +21,8 @@ export async function GET(request: Request) {
       SELECT ord.id, ord.order_no AS orderNo, ord.order_date AS orderDate,
         ord.customer_id AS customerId, c.name AS customerName,
         ord.product_id AS productId, p.class_name AS className, p.grade,
-        ord.quantity, ord.price, ord.quantity * ord.price AS amount, ord.currency, ord.destination,
+        ord.quantity, ord.price, ord.quantity * ord.price AS amount, ord.currency,
+        ord.order_nature AS orderNature, ord.production_base AS productionBase, ord.destination,
         ord.trade_terms AS tradeTerms, ord.payment_method AS paymentMethod,
         ord.shipment_month AS shipmentMonth, ord.lc_tt_date AS lcTtDate,
         ord.actual_shipment_date AS actualShipmentDate,
@@ -55,26 +56,29 @@ export async function POST(request: Request) {
     if (!db.prepare("SELECT id FROM products WHERE id = ?").get(input.productId)) {
       throw new ApiError(422, "PRODUCT_NOT_FOUND", "产品不存在", { productId: "产品不存在" });
     }
-    const orderNo = input.orderNo || uniqueCode("SO", (code) =>
-      Boolean(db.prepare("SELECT id FROM orders WHERE order_no = ?").get(code)),
-    );
+    const explicitOrderNo = input.orderNo || null;
     // 业务编号查重不区分大小写；已软删的记录在删除时已释放编号，不参与查重
-    if (db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND deleted_at IS NULL").get(orderNo)) {
+    if (explicitOrderNo && db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND deleted_at IS NULL").get(explicitOrderNo)) {
       throw new ApiError(409, "DUPLICATE_ORDER_NO", "订单编号已存在");
     }
     const ownerId = user.role === "admin" && input.ownerId ? input.ownerId : user.id;
-    const result = db.prepare(`
-      INSERT INTO orders
-        (order_no, order_date, customer_id, product_id, quantity, price, currency,
-         destination, trade_terms, payment_method, shipment_month, lc_tt_date,
-         actual_shipment_date, expected_arrival_date, contract_no, invoice_no,
-         status, owner_id, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(orderNo, input.orderDate, input.customerId, input.productId, input.quantity,
-      input.price, input.currency, input.destination, input.tradeTerms, input.paymentMethod,
-      input.shipmentMonth, input.lcTtDate, input.actualShipmentDate, input.expectedArrivalDate,
-      input.contractNo, input.invoiceNo, input.status, ownerId, input.notes, user.id);
-    const id = Number(result.lastInsertRowid);
+    // 留空的订单编号直接用这条订单的自增 id 当编号：先占位插入，拿到 id 后再回填
+    const { id, orderNo } = db.transaction(() => {
+      const result = db.prepare(`
+        INSERT INTO orders
+          (order_no, order_date, customer_id, product_id, quantity, price, currency,
+           order_nature, production_base, destination, trade_terms, payment_method,
+           shipment_month, lc_tt_date, actual_shipment_date, expected_arrival_date,
+           contract_no, invoice_no, status, owner_id, notes, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(explicitOrderNo ?? sequentialPlaceholder(), input.orderDate, input.customerId, input.productId, input.quantity,
+        input.price, input.currency, input.orderNature, input.productionBase, input.destination,
+        input.tradeTerms, input.paymentMethod, input.shipmentMonth, input.lcTtDate,
+        input.actualShipmentDate, input.expectedArrivalDate,
+        input.contractNo, input.invoiceNo, input.status, ownerId, input.notes, user.id);
+      const insertedId = Number(result.lastInsertRowid);
+      return { id: insertedId, orderNo: finalizeSequentialCode(db, "orders", "order_no", insertedId, explicitOrderNo) };
+    })();
     writeAudit(user.id, "create", "order", id, `新建订单 ${orderNo}`);
     return created({ id, orderNo });
   } catch (error) {

@@ -2,7 +2,6 @@ import { getDb } from "@/db/client";
 import { ApiError, handleApiError, integerId, ok, parseBody, requireApiUser } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
 import { assertCustomerAccess, assertResourceAccess } from "@/lib/permissions";
-import { generatedCode } from "@/lib/query";
 import { orderSchema } from "@/lib/validation";
 
 type Context = { params: Promise<{ id: string }> };
@@ -20,20 +19,23 @@ export async function PUT(request: Request, context: Context) {
     if (!db.prepare("SELECT id FROM products WHERE id = ?").get(input.productId)) {
       throw new ApiError(422, "PRODUCT_NOT_FOUND", "产品不存在", { productId: "产品不存在" });
     }
-    const orderNo = input.orderNo || current.orderNo || generatedCode("SO");
+    // 极少数历史数据编号是空的才会走到这个兜底：编辑的这条订单本身已有 id，直接拿来当编号
+    const orderNo = input.orderNo || current.orderNo || String(id);
     if (db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND id <> ? AND deleted_at IS NULL").get(orderNo, id)) {
       throw new ApiError(409, "DUPLICATE_ORDER_NO", "订单编号已存在");
     }
     const ownerId = user.role === "admin" && input.ownerId ? input.ownerId : current.ownerId;
     db.prepare(`
       UPDATE orders SET order_no = ?, order_date = ?, customer_id = ?, product_id = ?,
-        quantity = ?, price = ?, currency = ?, destination = ?, trade_terms = ?,
-        payment_method = ?, shipment_month = ?, lc_tt_date = ?, actual_shipment_date = ?,
-        expected_arrival_date = ?, contract_no = ?, invoice_no = ?, status = ?,
+        quantity = ?, price = ?, currency = ?, order_nature = ?, production_base = ?,
+        destination = ?, trade_terms = ?, payment_method = ?, shipment_month = ?,
+        lc_tt_date = ?, actual_shipment_date = ?, expected_arrival_date = ?,
+        contract_no = ?, invoice_no = ?, status = ?,
         owner_id = ?, notes = ?, updated_at = datetime('now') WHERE id = ?
     `).run(orderNo, input.orderDate, input.customerId, input.productId, input.quantity,
-      input.price, input.currency, input.destination, input.tradeTerms, input.paymentMethod,
-      input.shipmentMonth, input.lcTtDate, input.actualShipmentDate, input.expectedArrivalDate,
+      input.price, input.currency, input.orderNature, input.productionBase, input.destination,
+      input.tradeTerms, input.paymentMethod, input.shipmentMonth, input.lcTtDate,
+      input.actualShipmentDate, input.expectedArrivalDate,
       input.contractNo, input.invoiceNo, input.status, ownerId, input.notes, id);
     writeAudit(user.id, "update", "order", id, `更新订单 ${orderNo}`);
     return ok({ id, orderNo });

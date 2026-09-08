@@ -16,11 +16,12 @@ export async function GET(request: Request) {
     const rows = getDb().prepare(`
       SELECT ord.order_no AS orderNo, ord.order_date AS orderDate, c.name AS customerName,
         p.class_name AS className, p.grade, ord.quantity, ord.price, ord.currency,
+        ord.order_nature AS orderNature, ord.production_base AS productionBase,
         ord.destination, ord.trade_terms AS tradeTerms, ord.payment_method AS paymentMethod,
         ord.shipment_month AS shipmentMonth, ord.lc_tt_date AS lcTtDate,
         ord.actual_shipment_date AS actualShipmentDate,
         ord.expected_arrival_date AS expectedArrivalDate, ord.contract_no AS contractNo,
-        ord.invoice_no AS invoiceNo, ord.status
+        ord.invoice_no AS invoiceNo, ord.status, ord.notes
       FROM orders ord JOIN customers c ON c.id = ord.customer_id
       JOIN products p ON p.id = ord.product_id
       ${whereSql(conditions)} ORDER BY ord.order_date DESC, ord.id DESC

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
+import { dictLabel, dictLabelOf, type DictItem } from "@/lib/dicts";
 import { useLocale } from "./providers";
 import { StatusTag, statusLabel } from "./status-tag";
 import resStyles from "./resource-page.module.css";
@@ -53,7 +54,7 @@ export function CustomerOrders({
   /** 订单增删改成功后回调，客户档案页用它刷新页头的履约概要 */
   onChanged?: () => void;
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const isGlobal = customerId === undefined;
@@ -63,6 +64,8 @@ export function CustomerOrders({
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
+  const [orderNatures, setOrderNatures] = useState<DictItem[]>([]);
+  const [productionBases, setProductionBases] = useState<DictItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
@@ -75,6 +78,7 @@ export function CustomerOrders({
   const [arrivingSoon, setArrivingSoon] = useState(() => searchParams.get("arrivingSoon") === "1");
   const [dateFrom, setDateFrom] = useState(() => searchParams.get("dateFrom") || "");
   const [dateTo, setDateTo] = useState(() => searchParams.get("dateTo") || "");
+  const [currencyFilter, setCurrencyFilter] = useState(() => searchParams.get("currency") || "");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<OrderRow | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
@@ -93,6 +97,7 @@ export function CustomerOrders({
       if (arrivingSoon) params.set("arrivingSoon", "1");
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
+      if (currencyFilter) params.set("currency", currencyFilter);
       const response = await apiFetch(`/api/orders?${params}`);
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message || "订单加载失败");
@@ -104,7 +109,7 @@ export function CustomerOrders({
     } finally {
       setLoading(false);
     }
-  }, [arrivingSoon, customerId, dateFrom, dateTo, message, page, pageSize, query, status, t]);
+  }, [arrivingSoon, currencyFilter, customerId, dateFrom, dateTo, message, page, pageSize, query, status, t]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -117,6 +122,8 @@ export function CustomerOrders({
           setCustomers(payload.data.customers);
           setProducts(payload.data.products);
           setUsers(payload.data.users);
+          setOrderNatures(payload.data.dicts?.order_nature || []);
+          setProductionBases(payload.data.dicts?.production_base || []);
         }
       } catch {
         // 下拉数据加载失败不影响查看已有订单，静默处理
@@ -215,6 +222,8 @@ export function CustomerOrders({
   const fullColumns: TableProps<OrderRow>["columns"] = [
     ...compactColumns,
     { title: t("单价"), dataIndex: "price", width: 115, align: "right", render: (value, row) => <span className={resStyles.money}>{formatNumber(value)} {String(row.currency || "")}</span> },
+    { title: t("订单性质"), dataIndex: "orderNature", width: 110, render: (value) => value ? <Tag>{dictLabelOf(orderNatures, String(value), locale)}</Tag> : <span className={resStyles.muted}>-</span> },
+    { title: t("生产基地"), dataIndex: "productionBase", width: 100, render: (value) => value ? <Tag>{dictLabelOf(productionBases, String(value), locale)}</Tag> : <span className={resStyles.muted}>-</span> },
     { title: t("目的地"), dataIndex: "destination", width: 120, ellipsis: true, render: (value) => value || <span className={resStyles.muted}>-</span> },
     { title: t("贸易条款"), dataIndex: "tradeTerms", width: 100, render: (value) => value || <span className={resStyles.muted}>-</span> },
     { title: t("付款方式"), dataIndex: "paymentMethod", width: 110, render: (value) => value || <span className={resStyles.muted}>-</span> },
@@ -315,7 +324,7 @@ export function CustomerOrders({
             value={searchInput}
             placeholder={t("订单号、客户、产品、合同号")}
             onChange={(event) => setSearchInput(event.target.value)}
-            onSearch={(value) => { setQuery(value.trim()); setPage(1); setArrivingSoon(false); setDateFrom(""); setDateTo(""); }}
+            onSearch={(value) => { setQuery(value.trim()); setPage(1); setArrivingSoon(false); setDateFrom(""); setDateTo(""); setCurrencyFilter(""); }}
           />
           <Select
             className={resStyles.filter}
@@ -323,7 +332,7 @@ export function CustomerOrders({
             placeholder={t("全部状态")}
             value={status}
             options={orderStatuses}
-            onChange={(value) => { setStatus(value); setPage(1); setArrivingSoon(false); setDateFrom(""); setDateTo(""); }}
+            onChange={(value) => { setStatus(value); setPage(1); setArrivingSoon(false); setDateFrom(""); setDateTo(""); setCurrencyFilter(""); }}
           />
           {/* 从工作台统计卡带进来的筛选条件，给个可见可关的标记，免得疑惑列表为什么这么短 */}
           {arrivingSoon ? (
@@ -333,6 +342,9 @@ export function CustomerOrders({
             <Tag closable onClose={() => { setDateFrom(""); setDateTo(""); setPage(1); }}>
               {t("下单日期")}：{dateFrom || "…"} ~ {dateTo || "…"}
             </Tag>
+          ) : null}
+          {currencyFilter ? (
+            <Tag closable onClose={() => { setCurrencyFilter(""); setPage(1); }}>{t("币种")}：{currencyFilter}</Tag>
           ) : null}
         </div>
       ) : null}
@@ -356,7 +368,7 @@ export function CustomerOrders({
           loading={loading}
           columns={columns}
           dataSource={rows}
-          scroll={{ x: compact ? 860 : isGlobal ? 1890 : 1720 }}
+          scroll={{ x: compact ? 860 : isGlobal ? 2100 : 1930 }}
           pagination={total > pageSize ? { current: page, pageSize, total, showSizeChanger: false, showTotal: (value) => t("共 {n} 条", { n: value }), onChange: setPage } : false}
           locale={{
             emptyText: (
@@ -422,6 +434,12 @@ export function CustomerOrders({
             <Form.Item name="currency" label={t("币种")}>
               <Select options={CURRENCIES.map((value) => ({ label: value, value }))} />
             </Form.Item>
+            <Form.Item name="orderNature" label={t("订单性质")}>
+              <Select allowClear placeholder={t("请选择{label}", { label: t("订单性质") })} options={orderNatures.map((item) => ({ value: item.code, label: dictLabel(item, locale) }))} />
+            </Form.Item>
+            <Form.Item name="productionBase" label={t("生产基地")}>
+              <Select allowClear showSearch optionFilterProp="label" placeholder={t("请选择{label}", { label: t("生产基地") })} options={productionBases.map((item) => ({ value: item.code, label: dictLabel(item, locale) }))} />
+            </Form.Item>
             {isAdmin ? (
               <Form.Item name="ownerId" label={t("负责人")}>
                 <Select showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: item.name }))} />
@@ -464,6 +482,8 @@ export function CustomerOrders({
               <Descriptions.Item label={t("数量")}>{formatNumber(detail.quantity)}</Descriptions.Item>
               <Descriptions.Item label={t("单价")}>{`${formatNumber(detail.price)} ${detail.currency || ""}`}</Descriptions.Item>
               <Descriptions.Item label={t("金额")}>{`${formatNumber(detail.amount)} ${detail.currency || ""}`}</Descriptions.Item>
+              <Descriptions.Item label={t("订单性质")}>{detail.orderNature ? dictLabelOf(orderNatures, String(detail.orderNature), locale) : "-"}</Descriptions.Item>
+              <Descriptions.Item label={t("生产基地")}>{detail.productionBase ? dictLabelOf(productionBases, String(detail.productionBase), locale) : "-"}</Descriptions.Item>
               <Descriptions.Item label={t("负责人")}>{text(detail, "ownerName")}</Descriptions.Item>
               <Descriptions.Item label={t("目的地")}>{text(detail, "destination")}</Descriptions.Item>
               <Descriptions.Item label={t("贸易条款")}>{text(detail, "tradeTerms")}</Descriptions.Item>

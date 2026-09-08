@@ -294,6 +294,7 @@ export function CustomerProfile({ id }: { id: number }) {
           </div>
           {customer.nameEn ? <div className={styles.nameEn}>{customer.nameEn}</div> : null}
           <div className={styles.headerMeta}>
+            <span><b>{t("客户编号")}</b> {id}</span>
             {customer.shortName ? <span><b>{t("简称")}</b> {customer.shortName}</span> : null}
             <span><b>{t("负责人")}</b> {customer.ownerName}</span>
             {location ? <span><b>{t("国家 / 地区")}</b> {location}</span> : null}

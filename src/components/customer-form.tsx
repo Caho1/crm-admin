@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/client-fetch";
 import { dictLabel, type DictMap, type DictType } from "@/lib/dicts";
 import { CompetitorsField } from "./competitor-fields";
 import { ContactsField, type ContactValue } from "./contact-fields";
+import { AttachmentsField } from "./product-attachments";
 import { useLocale } from "./providers";
 import { useCurrentUser } from "./user-context";
 import styles from "./resource-page.module.css";
@@ -16,7 +17,7 @@ export type Option = { label: string; value: string | number };
 export type LookupItem = { id: number; name?: string; label?: string; className?: string; grade?: string; role?: string; status?: string };
 /** industries：客户表里实际录入过的行业（去重），供列表筛选下拉用，不是标签字典 */
 export type Lookups = { customers: LookupItem[]; products: LookupItem[]; users: LookupItem[]; dicts: DictMap; industries: string[] };
-export type FieldType = "input" | "textarea" | "select" | "multi" | "date" | "month" | "number" | "contacts" | "competitors" | "section";
+export type FieldType = "input" | "textarea" | "select" | "multi" | "date" | "month" | "number" | "contacts" | "competitors" | "attachments" | "section";
 export type Field = {
   name: string;
   label: string;
@@ -58,7 +59,7 @@ export function optionsFor(field: Field, lookups: Lookups, t: TFn, editing: bool
 }
 
 /** 字段配置渲染成 Form.Item，列表页与客户详情页共用同一套控件与校验 */
-export function ResourceFormFields({ fields, lookups, editing }: { fields: Field[]; lookups: Lookups; editing: boolean }) {
+export function ResourceFormFields({ fields, lookups, editing, recordId }: { fields: Field[]; lookups: Lookups; editing: boolean; recordId?: number }) {
   const { t, locale } = useLocale();
   const user = useCurrentUser();
 
@@ -81,6 +82,14 @@ export function ResourceFormFields({ fields, lookups, editing }: { fields: Field
       return (
         <div key={field.name} className={styles.fieldFull}>
           <CompetitorsField name={field.name} label={field.label} />
+        </div>
+      );
+    }
+    // 附件走独立接口即时增删，不随主表单一起提交，所以只依赖 recordId 而不挂表单字段
+    if (field.type === "attachments") {
+      return (
+        <div key={field.name} className={styles.fieldFull}>
+          <AttachmentsField label={field.label} productId={recordId} />
         </div>
       );
     }

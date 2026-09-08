@@ -16,6 +16,7 @@ export function buildOrderFilters(searchParams: URLSearchParams, user: SessionUs
     )`, value, value, value, value, value, value, value);
   }
   if (searchParams.get("status")) addCondition(conditions, params, "ord.status = ?", searchParams.get("status"));
+  if (searchParams.get("currency")) addCondition(conditions, params, "ord.currency = ?", searchParams.get("currency"));
   if (searchParams.get("customerId")) addCondition(conditions, params, "ord.customer_id = ?", Number(searchParams.get("customerId")));
   if (searchParams.get("productId")) addCondition(conditions, params, "ord.product_id = ?", Number(searchParams.get("productId")));
   if (searchParams.get("shipmentMonth")) addCondition(conditions, params, "ord.shipment_month = ?", searchParams.get("shipmentMonth"));

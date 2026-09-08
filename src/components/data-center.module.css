@@ -75,6 +75,33 @@
   line-height: 1.8;
 }
 
+.missingAlert {
+  margin-bottom: 14px;
+}
+
+.missingBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.missingGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.missingGroupTitle {
+  color: #475467;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.missingList {
+  max-height: 140px;
+  overflow: auto;
+}
+
 @media (max-width: 640px) {
   .header {
     align-items: flex-start;

@@ -3,8 +3,9 @@
 import dynamic from "next/dynamic";
 import styles from "./dashboard.module.css";
 
-export type TrendDatum = { bucket: string; label: string; title: string; count: number; amount: number };
+export type TrendDatum = { bucket: string; label: string; title: string; count: number };
 export type DistributionDatum = { name: string; amount: number; quantity: number; orderCount: number };
+export type CategoryDatum = { name: string; count: number };
 
 // @ant-design/plots（AntV G2）只在浏览器渲染，动态导入跳过 SSR，并让图表库单独分包
 const Area = dynamic(() => import("@ant-design/plots").then((mod) => mod.Area), {
@@ -31,30 +32,18 @@ const compact = new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFra
 const full = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
 const percent = new Intl.NumberFormat("zh-CN", { style: "percent", maximumFractionDigits: 1 });
 
-/** 面积图基底：订单数与订单金额共用，只是取值字段和格式化不同 */
-function TrendChart({
-  data,
-  field,
-  emptyText,
-  tooltipName,
-  formatValue,
-}: {
-  data: TrendDatum[];
-  field: "count" | "amount";
-  emptyText: string;
-  tooltipName: string;
-  formatValue: (value: number) => string;
-}) {
-  const total = data.reduce((sum, item) => sum + item[field], 0);
+/** 面积图：新增客户趋势、拜访活跃度趋势共用同一套样式，只是喂的计数不同 */
+export function TrendArea({ data, emptyText, tooltipName }: { data: TrendDatum[]; emptyText: string; tooltipName: string }) {
+  const total = data.reduce((sum, item) => sum + item.count, 0);
   if (total === 0) return <div className={styles.chartEmpty}>{emptyText}</div>;
   // 至少给个下限，避免数值都很小时曲线贴顶
-  const max = Math.max(field === "count" ? 2 : 1, ...data.map((item) => item[field]));
+  const max = Math.max(2, ...data.map((item) => item.count));
   return (
     <div className={styles.chartBody}>
       <Area
         data={data}
         xField="label"
-        yField={field}
+        yField="count"
         height={CHART_HEIGHT}
         shapeField="smooth"
         insetTop={14}
@@ -64,7 +53,7 @@ function TrendChart({
         line={{ style: { stroke: BRAND, lineWidth: 2, lineCap: "round", lineJoin: "round" } }}
         point={{ sizeField: 4, style: { fill: "#fff", stroke: BRAND, lineWidth: 2 } }}
         label={{
-          text: (d: TrendDatum) => formatValue(d[field]),
+          text: (d: TrendDatum) => String(d.count),
           selector: "last",
           textBaseline: "bottom",
           dy: -10,
@@ -84,14 +73,13 @@ function TrendChart({
             gridStroke: "#eef1f5",
             gridLineWidth: 1,
             gridLineDash: [0, 0],
-            labelFormatter: (value: number) =>
-              field === "count" ? (Number.isInteger(value) ? String(value) : "") : compact.format(value),
+            labelFormatter: (value: number) => (Number.isInteger(value) ? String(value) : ""),
           },
         }}
         scale={{ y: { domainMin: 0, domainMax: max, nice: true } }}
         tooltip={{
           title: (d: TrendDatum) => d.title,
-          items: [{ channel: "y", name: tooltipName, valueFormatter: (value: number) => formatValue(value) }],
+          items: [{ channel: "y", name: tooltipName, valueFormatter: (value: number) => String(value) }],
         }}
         interaction={{ tooltip: { crosshairs: true, crosshairsStroke: "#c2cad6", crosshairsLineDash: [4, 4], marker: false } }}
       />
@@ -99,25 +87,15 @@ function TrendChart({
   );
 }
 
-/** 订单数趋势 */
-export function TrendArea({ data, emptyText, tooltipName }: { data: TrendDatum[]; emptyText: string; tooltipName: string }) {
-  return <TrendChart data={data} field="count" emptyText={emptyText} tooltipName={tooltipName} formatValue={(value) => String(value)} />;
-}
-
-/** 订单金额趋势：数值大，轴与标签走紧凑记数（1.2万） */
-export function AmountArea({ data, emptyText, tooltipName }: { data: TrendDatum[]; emptyText: string; tooltipName: string }) {
-  return <TrendChart data={data} field="amount" emptyText={emptyText} tooltipName={tooltipName} formatValue={(value) => compact.format(value)} />;
-}
-
-/** 产品大类占比：环形图，看材料结构（PP / PE / PC / EVA 各占多少） */
-export function ProductClassPie({ data, emptyText, tooltipName }: { data: DistributionDatum[]; emptyText: string; tooltipName: string }) {
-  const total = data.reduce((sum, item) => sum + item.amount, 0);
+/** 客户结构占比：环形图，看客户分类构成（工厂 / 贸易商 / 工贸一体各占多少） */
+export function CategoryPie({ data, emptyText, tooltipName }: { data: CategoryDatum[]; emptyText: string; tooltipName: string }) {
+  const total = data.reduce((sum, item) => sum + item.count, 0);
   if (total === 0) return <div className={styles.chartEmpty}>{emptyText}</div>;
   return (
     <div className={styles.chartBody}>
       <Pie
         data={data}
-        angleField="amount"
+        angleField="count"
         colorField="name"
         height={CHART_HEIGHT}
         innerRadius={0.6}
@@ -125,7 +103,7 @@ export function ProductClassPie({ data, emptyText, tooltipName }: { data: Distri
         scale={{ color: { range: PALETTE } }}
         // 占比标注在扇区外侧，用引导线连回对应扇区；占比过小的扇区不标，避免线条打架
         label={{
-          text: (d: DistributionDatum) => (d.amount / total >= 0.03 ? percent.format(d.amount / total) : ""),
+          text: (d: CategoryDatum) => (d.count / total >= 0.03 ? percent.format(d.count / total) : ""),
           position: "outside",
           connector: true,
           connectorStroke: "#c2cad6",
@@ -137,7 +115,7 @@ export function ProductClassPie({ data, emptyText, tooltipName }: { data: Distri
         }}
         legend={{ color: { position: "right", rowPadding: 6, itemLabelFill: "#475467", itemLabelFontSize: 12 } }}
         tooltip={{
-          title: (d: DistributionDatum) => d.name,
+          title: (d: CategoryDatum) => d.name,
           items: [{ channel: "y", name: tooltipName, valueFormatter: (value: number) => full.format(value) }],
         }}
       />
@@ -162,7 +140,16 @@ export function GradeBar({ data, emptyText, tooltipName }: { data: DistributionD
         label={{ text: (d: DistributionDatum) => compact.format(d.amount), position: "right", fill: "#475467", fontSize: 12 }}
         axis={{
           x: { title: false, line: false, tick: false, labelFill: "#475467", labelFontSize: 12 },
-          y: { title: false, line: false, tick: false, labelFill: "#98a2b3", labelFontSize: 12, labelFormatter: (value: number) => compact.format(value), gridStroke: "#eef1f5" },
+          y: {
+            title: false,
+            line: false,
+            tick: false,
+            labelFill: "#98a2b3",
+            labelFontSize: 12,
+            labelFormatter: (value: number) => compact.format(value),
+            labelAutoRotate: false,
+            gridStroke: "#eef1f5",
+          },
         }}
         tooltip={{
           title: (d: DistributionDatum) => d.name,

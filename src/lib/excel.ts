@@ -43,6 +43,8 @@ export const orderExcelColumns = [
   { header: "Quantity", key: "quantity", width: 12 },
   { header: "Price", key: "price", width: 14 },
   { header: "Currency", key: "currency", width: 10 },
+  { header: "Order Nature", key: "orderNature", width: 14 },
+  { header: "Production Base", key: "productionBase", width: 14 },
   { header: "Destination", key: "destination", width: 16 },
   { header: "Terms", key: "tradeTerms", width: 12 },
   { header: "Payment", key: "paymentMethod", width: 14 },
@@ -53,6 +55,7 @@ export const orderExcelColumns = [
   { header: "Contract No.", key: "contractNo", width: 16 },
   { header: "INVOICE", key: "invoiceNo", width: 16 },
   { header: "Status", key: "status", width: 14 },
+  { header: "Remark", key: "notes", width: 20 },
 ] as const;
 
 // 客户名单导入：只做客户档案本身 + 主要联系人（第一位），其余联系人、名片图片、
@@ -91,7 +94,7 @@ function styleSheet(worksheet: ExcelJS.Worksheet, lastColumn: string) {
 }
 
 export function styleOrderSheet(worksheet: ExcelJS.Worksheet) {
-  styleSheet(worksheet, "R");
+  styleSheet(worksheet, "T");
   worksheet.getColumn("quantity").numFmt = "0.00";
   worksheet.getColumn("price").numFmt = "#,##0.00";
 }
@@ -111,11 +114,13 @@ export const headerAliases: Record<string, string[]> = {
   orderNo: ["orderno", "订单编号"],
   orderDate: ["orderdate", "下单日期", "订单日期"],
   customerName: ["customer", "客户", "客户名称"],
-  className: ["classi", "class", "分类", "产品大类"],
+  className: ["classi", "class", "classify", "分类", "产品大类"],
   grade: ["grade", "牌号", "型号", "产品牌号"],
-  quantity: ["quantity", "qty", "数量"],
+  quantity: ["quantity", "qty", "数量", "quantitymt"],
   price: ["price", "单价", "价格"],
-  currency: ["currency", "币种"],
+  currency: ["currency", "币种", "salesmethod"],
+  orderNature: ["ordernature", "订单性质"],
+  productionBase: ["productionbase", "生产基地"],
   destination: ["destination", "目的地"],
   tradeTerms: ["terms", "tradeterms", "贸易条款"],
   paymentMethod: ["payment", "paymentmethod", "付款方式"],
@@ -126,6 +131,7 @@ export const headerAliases: Record<string, string[]> = {
   contractNo: ["contractno", "合同号"],
   invoiceNo: ["invoice", "invoiceno", "发票号"],
   status: ["status", "状态"],
+  notes: ["remark", "notes", "备注"],
 };
 
 export const customerHeaderAliases: Record<string, string[]> = {

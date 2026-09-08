@@ -1,7 +1,7 @@
 .stats {
   display: grid;
   margin-bottom: 12px;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
   gap: 10px;
 }
 
@@ -38,6 +38,13 @@
   font-size: 26px;
   line-height: 1;
   font-weight: 700;
+}
+
+.statSub {
+  margin-top: 4px;
+  color: #98a2b3;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .panels {
@@ -151,6 +158,17 @@
 }
 
 .statLink .statCard {
+  height: 100%;
+}
+
+/* 没有下钻链接的统计卡（如「开发项目」）也要和同排卡片等高，
+   否则一旦邻居因为副标题（如 MT 数量）变高，这张卡就会显得矮一截 */
+.statPlain {
+  display: block;
+  height: 100%;
+}
+
+.statPlain .statCard {
   height: 100%;
 }
 

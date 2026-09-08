@@ -8,13 +8,13 @@ export type TrendGranularity = "year" | "month" | "week";
 // 各粒度的桶数：年 5、月 12、周 12
 const BUCKET_COUNTS: Record<TrendGranularity, number> = { year: 5, month: 12, week: 12 };
 
-// SQL 分桶表达式，需与 JS 侧 bucketKey 的格式一致
-const BUCKET_EXPRS: Record<TrendGranularity, string> = {
-  year: "strftime('%Y', ord.order_date)",
-  month: "strftime('%Y-%m', ord.order_date)",
+// SQL 分桶表达式，需与 JS 侧 bucketKey 的格式一致；column 按查询各自传入
+function bucketExpr(column: string, granularity: TrendGranularity) {
+  if (granularity === "year") return `strftime('%Y', ${column})`;
+  if (granularity === "month") return `strftime('%Y-%m', ${column})`;
   // 'weekday 0' 前进到本周日，再回退 6 天得到周一：按周一至周日归周
-  week: "date(ord.order_date, 'weekday 0', '-6 days')",
-};
+  return `date(${column}, 'weekday 0', '-6 days')`;
+}
 
 function bucketKey(date: Dayjs, granularity: TrendGranularity) {
   if (granularity === "year") return date.format("YYYY");
@@ -52,29 +52,33 @@ export async function GET(request: Request) {
     const granularity: TrendGranularity = raw === "year" || raw === "week" ? raw : "month";
 
     const { keys, rangeStart } = buildBuckets(granularity);
-    // 单数与金额一次查出，工作台的「订单趋势」与「金额趋势」共用这份数据。
-    // 已取消的订单不计入金额，否则趋势会被废单抬高。
-    const rows = db
+
+    // 新增客户趋势：按客户建档时间分桶（围绕客户管理，工作台第一张趋势图看的是客户增长而不是订单量）
+    const customerRows = db
       .prepare(`
-        SELECT ${BUCKET_EXPRS[granularity]} AS bucket, COUNT(*) AS count,
-          COALESCE(SUM(CASE WHEN ord.status <> 'cancelled' THEN ord.quantity * ord.price END), 0) AS amount
-        FROM orders ord
-        JOIN customers c ON c.id = ord.customer_id
-        WHERE ord.deleted_at IS NULL
-          AND ord.order_date >= ?
-          AND ${scope.sql}
+        SELECT ${bucketExpr("c.created_at", granularity)} AS bucket, COUNT(*) AS count
+        FROM customers c
+        WHERE c.deleted_at IS NULL AND c.created_at >= ? AND ${scope.sql}
         GROUP BY bucket
       `)
-      .all(rangeStart, ...scope.params) as Array<{ bucket: string; count: number; amount: number }>;
+      .all(rangeStart, ...scope.params) as Array<{ bucket: string; count: number }>;
 
-    const trend = keys.map((bucket) => {
-      const row = rows.find((item) => item.bucket === bucket);
-      return {
-        bucket,
-        count: row?.count ?? 0,
-        amount: Math.round(row?.amount ?? 0),
-      };
-    });
+    // 拜访活跃度趋势：按拜访日期分桶，看客情维护是否跟得上
+    const visitRows = db
+      .prepare(`
+        SELECT ${bucketExpr("v.visit_date", granularity)} AS bucket, COUNT(*) AS count
+        FROM visits v
+        JOIN customers c ON c.id = v.customer_id
+        WHERE v.deleted_at IS NULL AND c.deleted_at IS NULL AND v.visit_date >= ? AND ${scope.sql}
+        GROUP BY bucket
+      `)
+      .all(rangeStart, ...scope.params) as Array<{ bucket: string; count: number }>;
+
+    const trend = keys.map((bucket) => ({
+      bucket,
+      newCustomers: customerRows.find((item) => item.bucket === bucket)?.count ?? 0,
+      visits: visitRows.find((item) => item.bucket === bucket)?.count ?? 0,
+    }));
 
     return ok({ granularity, trend });
   } catch (error) {

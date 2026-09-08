@@ -102,6 +102,7 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       ],
       columns: [
         { title: t("客户名称"), dataIndex: "name", width: 200, kind: "primary", ellipsis: true },
+        { title: t("客户编号"), dataIndex: "id", width: 90, kind: "number" },
         { title: t("简称"), dataIndex: "shortName", width: 110, ellipsis: true },
         { title: t("英文名称"), dataIndex: "nameEn", width: 190, ellipsis: true },
         { title: t("客户分类"), dataIndex: "category", width: 110, kind: "dict", dictType: "customer_category" },
@@ -147,6 +148,7 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
         { name: "application", label: t("产品用途"), type: "textarea", rows: 3, full: true, maxLength: 500 },
         { name: "notes", label: t("备注"), type: "textarea", rows: 3, full: true, maxLength: 2000 },
         { name: "competitors", label: t("竞争型号对比"), type: "competitors", full: true },
+        { name: "attachments", label: t("附件"), type: "attachments", full: true },
       ],
       defaults: () => ({ status: "active", competitors: [] }),
     },
@@ -516,6 +518,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
                   {industry ? <Tag>{industry}</Tag> : null}
                 </div>
                 <dl className={styles.cardMeta}>
+                  <div><dt>{t("客户编号")}</dt><dd>{record.id as number}</dd></div>
                   <div><dt>{t("国家 / 地区")}</dt><dd>{location || "-"}</dd></div>
                   <div><dt>{t("负责人")}</dt><dd>{String(record.ownerName || "-")}</dd></div>
                   <div><dt>{t("最近拜访")}</dt><dd>{String(record.latestVisitDate || "-")}</dd></div>
@@ -592,7 +595,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
             连续编辑多条记录时的残留值改由打开时的 resetFields 处理 */}
         <Form form={form} layout="vertical" requiredMark={false} initialValues={initialValues}>
           <FormValuesReset values={initialValues} />
-          <ResourceFormFields fields={config.fields} lookups={lookups} editing={Boolean(editing)} />
+          <ResourceFormFields fields={config.fields} lookups={lookups} editing={Boolean(editing)} recordId={editing?.id} />
         </Form>
       </Modal>
     </div>

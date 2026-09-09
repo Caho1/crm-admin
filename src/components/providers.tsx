@@ -71,6 +71,14 @@ export function Providers({ children, initialLocale = "zh-CN" }: { children: Rea
             // 抽屉里的 inline 菜单才用软底选中样式
             Menu: { itemBorderRadius: 6, itemHeight: 42, itemMarginInline: 10, itemSelectedBg: "#eaf3fb", itemSelectedColor: "#1769aa", horizontalLineHeight: "62px" },
             Table: { headerBg: "#f8fafc", rowHoverBg: "#f6f9fc" },
+            // colorSuccess/colorPrimary 这类低饱和深色，antd 调色板推出来的浅色档是灰的
+            // （#2f855a -> #b9c4bc），Alert 底色会发暗，这里直接指定底色与描边
+            Alert: {
+              colorSuccessBg: "#eef8f2",
+              colorSuccessBorder: "#bfe3ce",
+              colorInfoBg: "#eaf3fb",
+              colorInfoBorder: "#bcd9ee",
+            },
             Button: { primaryShadow: "none" },
           },
         }}

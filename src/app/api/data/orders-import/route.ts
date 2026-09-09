@@ -9,9 +9,26 @@ import { IMPORT_FILE_PATTERN, headerAliases, normalizeHeader, parseExcelDate, pa
 
 export const runtime = "nodejs";
 
+/** Excel 单元格值 → 纯文本：富文本、公式结果、日期都要能正确取到，不能落成 [object Object] */
+function cellToText(value: ExcelJS.CellValue): string {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === "object" && "richText" in value) {
+    return (value.richText as Array<{ text: string }>).map((part) => part.text).join("").trim();
+  }
+  if (typeof value === "object" && "text" in value) return String(value.text).trim();
+  if (typeof value === "object" && "result" in value) return String(value.result ?? "").trim();
+  return String(value).trim();
+}
+
+
 type ImportedOrder = {
+  /** Excel 行号：预检表格按行勾选、提交时按行号过滤都要用它 */
+  rowNumber: number;
   /** 订单编号在库里已存在 → 更新那条订单；否则新建 */
   mode: "create" | "update";
+  /** 同一个订单编号在文件里出现了不止一次：不拦截，只在预检表格里标红 */
+  duplicate: boolean;
   id: number | null;
   /** null = 留空，等真正写库时用这条订单自己的自增 id 当编号 */
   orderNo: string | null;
@@ -42,11 +59,24 @@ type ImportedOrder = {
 
 type ProductRef = { className: string; grade: string };
 
+type PreviewRow = {
+  row: number;
+  cells: string[];
+  mode: "create" | "update" | null;
+  duplicate: boolean;
+  error: string | null;
+  /** 这一行的问题是不是「只差客户/产品没建」——是的话，勾上「一起新建」它就能导 */
+  fixableByCreate: boolean;
+};
+
 type ParsedOrders = {
   validRows: ImportedOrder[];
   errors: Array<{ row: number; message: string }>;
   missingCustomers: string[];
   missingProducts: ProductRef[];
+  /** 预检弹窗按「文件原样」展示用：表头 + 每行原始单元格 */
+  headers: string[];
+  previewRows: PreviewRow[];
 };
 
 function valueOf(row: ExcelJS.Row, mapping: Record<string, number>, field: string) {
@@ -114,9 +144,19 @@ function isOnlyMissingReference(message: string) {
 function parseOrderRows(worksheet: ExcelJS.Worksheet, mapping: Record<string, number>, db: Database.Database): ParsedOrders {
   const errors: Array<{ row: number; message: string }> = [];
   const validRows: ImportedOrder[] = [];
+  const previewRows: PreviewRow[] = [];
+  // 表头原样带回前端：弹窗里显示的就是这份 Excel 自己的列
+  const headers: string[] = [];
+  worksheet.getRow(1).eachCell((cell, column) => {
+    headers[column - 1] = cellToText(cell.value);
+  });
+  const rawCells = (row: ExcelJS.Row) =>
+    headers.map((_, index) => cellToText(row.getCell(index + 1).value));
   const seenOrderNos = new Set<string>();
   const missingCustomers = new Map<string, string>();
   const missingProducts = new Map<string, ProductRef>();
+  // 同一订单编号在文件里出现几次、都在哪几行，供前端弹窗把重复项列清楚
+  const orderNoRows = new Map<string, { key: string; rows: number[] }>();
 
   for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
     const row = worksheet.getRow(rowNumber);
@@ -163,15 +203,40 @@ function parseOrderRows(worksheet: ExcelJS.Worksheet, mapping: Record<string, nu
     const existing = suppliedOrderNo
       ? (db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND deleted_at IS NULL").get(suppliedOrderNo) as { id: number } | undefined)
       : undefined;
-    if (suppliedOrderNo && seenOrderNos.has(suppliedOrderNo.toLowerCase())) rowErrors.push(`订单编号“${suppliedOrderNo}”在文件中重复`);
+    // 编号重复不再当错误拦下来：预检表格里标红 + 勾选框交给用户决定导哪几行
     if (suppliedOrderNo) seenOrderNos.add(suppliedOrderNo.toLowerCase());
+    if (suppliedOrderNo) {
+      const key = suppliedOrderNo.toLowerCase();
+      const group = orderNoRows.get(key);
+      if (group) group.rows.push(rowNumber);
+      else orderNoRows.set(key, { key: suppliedOrderNo, rows: [rowNumber] });
+    }
     if (rowErrors.length) {
-      errors.push({ row: rowNumber, message: rowErrors.join("；") });
+      const message = rowErrors.join("；");
+      errors.push({ row: rowNumber, message });
+      previewRows.push({
+        row: rowNumber,
+        cells: rawCells(row),
+        mode: null,
+        duplicate: false,
+        error: message,
+        fixableByCreate: isOnlyMissingReference(message),
+      });
       continue;
     }
+    previewRows.push({
+      row: rowNumber,
+      cells: rawCells(row),
+      mode: existing ? "update" : "create",
+      duplicate: false,
+      error: null,
+      fixableByCreate: false,
+    });
     // 没填订单编号的行留到真正写库时再定：那时候这条订单自己的自增 id 才存在，直接拿来当编号
     validRows.push({
+      rowNumber,
       mode: existing ? "update" : "create",
+      duplicate: false,
       id: existing?.id ?? null,
       orderNo: suppliedOrderNo || null,
       orderDate: orderDate!,
@@ -199,11 +264,21 @@ function parseOrderRows(worksheet: ExcelJS.Worksheet, mapping: Record<string, nu
     });
   }
 
+  // 编号出现两次以上的行统一打上 duplicate 标记（含第一次出现的那行），预检表格里整组标红
+  const duplicateKeys = new Set(
+    [...orderNoRows.values()].filter((group) => group.rows.length > 1).map((group) => group.key.toLowerCase()),
+  );
+  for (const row of validRows) row.duplicate = Boolean(row.orderNo && duplicateKeys.has(row.orderNo.toLowerCase()));
+  const duplicateRowNumbers = new Set(validRows.filter((row) => row.duplicate).map((row) => row.rowNumber));
+  for (const row of previewRows) row.duplicate = duplicateRowNumbers.has(row.row);
+
   return {
     validRows,
     errors,
     missingCustomers: [...missingCustomers.values()],
     missingProducts: [...missingProducts.values()],
+    headers,
+    previewRows,
   };
 }
 
@@ -217,7 +292,9 @@ function buildPreviewPayload(parsed: ParsedOrders) {
     createCount,
     updateCount,
     errors: parsed.errors,
-    preview: parsed.validRows.slice(0, 20),
+    headers: parsed.headers,
+    // 整份文件逐行返回（不截断）：弹窗要按行勾选，且按文件原样展示每一列
+    preview: parsed.previewRows,
     missingCustomers: parsed.missingCustomers,
     missingProducts: parsed.missingProducts,
     // 只有当报错清一色是「客户/产品不存在」时，前端才提供「新建缺失项并导入」这个快捷操作；
@@ -228,8 +305,9 @@ function buildPreviewPayload(parsed: ParsedOrders) {
 
 /** 写订单本体，不自己开事务——调用方决定要不要跟「新建缺失客户/产品」合并成一个事务 */
 function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: SessionUser) {
-  const createCount = validRows.filter((row) => row.mode === "create").length;
-  const updateCount = validRows.length - createCount;
+  // 实际落库时的新建/更新条数：同一个编号勾了多行时只会建一条，报数按真实发生的算
+  let createCount = 0;
+  let updateCount = 0;
   const insert = db.prepare(`
     INSERT INTO orders
       (order_no, order_date, customer_id, product_id, quantity, price, currency,
@@ -256,7 +334,13 @@ function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: 
     ["notes", "notes"],
   ];
   for (const row of validRows) {
-    if (row.mode === "create") {
+    // 同一个订单编号勾了多行时，第一行建单、后面几行更新同一条（不然会撞 order_no 的唯一约束）。
+    // 所以这里按写库当下的状态重新判定新建还是更新，而不是沿用预检时算好的 mode
+    const existingId = row.orderNo
+      ? (db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND deleted_at IS NULL").get(row.orderNo) as { id: number } | undefined)?.id ?? null
+      : null;
+    if (existingId === null) {
+      createCount += 1;
       const owner = db.prepare("SELECT owner_id AS ownerId FROM customers WHERE id = ?").get(row.customerId) as { ownerId: number };
       const result = insert.run(row.orderNo ?? sequentialPlaceholder(), row.orderDate, row.customerId, row.productId, row.quantity,
         row.price, row.currency ?? "USD", row.orderNature ?? "", row.productionBase ?? "",
@@ -268,6 +352,7 @@ function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: 
       finalizeSequentialCode(db, "orders", "order_no", Number(result.lastInsertRowid), row.orderNo);
       continue;
     }
+    updateCount += 1;
     // 更新：必填列（日期 / 客户 / 产品 / 数量 / 单价）总是覆盖，负责人保持不动
     const assignments = ["order_date = ?", "customer_id = ?", "product_id = ?", "quantity = ?", "price = ?"];
     const params: unknown[] = [row.orderDate, row.customerId, row.productId, row.quantity, row.price];
@@ -278,7 +363,7 @@ function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: 
       params.push(value);
     }
     assignments.push("updated_at = datetime('now')");
-    db.prepare(`UPDATE orders SET ${assignments.join(", ")} WHERE id = ?`).run(...params, row.id);
+    db.prepare(`UPDATE orders SET ${assignments.join(", ")} WHERE id = ?`).run(...params, existingId);
   }
   return { createCount, updateCount };
 }
@@ -329,6 +414,17 @@ function isProductRef(value: unknown): value is ProductRef {
   return Boolean(value && typeof value === "object" && "className" in value && "grade" in value);
 }
 
+/** 预检表格里勾选的行号（Excel 行号）；没传返回 null 表示「全导」 */
+function parseSelectedRows(value: FormDataEntryValue | null): Set<number> | null {
+  const parsed = parseJsonArray(value);
+  if (!parsed.length) return null;
+  return new Set(parsed.filter((item): item is number => typeof item === "number"));
+}
+
+function pickSelected(rows: ImportedOrder[], selected: Set<number> | null) {
+  return selected ? rows.filter((row) => selected.has(row.rowNumber)) : rows;
+}
+
 /** 「新建缺失项后重新解析仍有错」时用来跳出事务并触发回滚，不落库任何东西 */
 class StillInvalidError extends Error {}
 
@@ -364,10 +460,14 @@ export async function POST(request: Request) {
       return ok(buildPreviewPayload(parsed));
     }
 
+    // 用户在预检表格里勾掉的行不导入；不传这个字段时默认全导（兼容旧调用）
+    const selectedRows = parseSelectedRows(form.get("selectedRows"));
+
     if (parsed.errors.length === 0) {
-      const { createCount, updateCount } = commitOrders(db, parsed.validRows, admin);
+      const rowsToImport = pickSelected(parsed.validRows, selectedRows);
+      const { createCount, updateCount } = commitOrders(db, rowsToImport, admin);
       writeAudit(admin.id, "import", "order", null, `从 ${file.name} 导入订单：新增 ${createCount} 条，更新 ${updateCount} 条`);
-      return ok({ valid: true, imported: parsed.validRows.length, createCount, updateCount, errors: [] });
+      return ok({ valid: true, imported: rowsToImport.length, createCount, updateCount, errors: [] });
     }
 
     // 预检发现的错误是「客户/产品不存在」，且前端已经带着用户确认要新建的名单回来：
@@ -385,13 +485,13 @@ export async function POST(request: Request) {
           createMissingProducts(db, createProducts);
           retry = parseOrderRows(worksheet, mapping, db);
           if (retry.errors.length) throw new StillInvalidError();
-          return insertOrders(db, retry.validRows, admin);
+          return insertOrders(db, pickSelected(retry.validRows, selectedRows), admin);
         })();
       } catch (error) {
         if (!(error instanceof StillInvalidError)) throw error;
       }
       if (committed && retry) {
-        const finalRows = (retry as ParsedOrders).validRows;
+        const finalRows = pickSelected((retry as ParsedOrders).validRows, selectedRows);
         writeAudit(
           admin.id,
           "import",

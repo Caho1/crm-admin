@@ -1,14 +1,27 @@
 "use client";
 
-import { DownloadOutlined, FileExcelOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Checkbox, Empty, Table, Tabs, Tag, Upload, type TableProps, type UploadFile } from "antd";
-import { useEffect, useState } from "react";
+import { DownloadOutlined, FileExcelOutlined, InboxOutlined, TableOutlined, UploadOutlined } from "@ant-design/icons";
+import { Alert, App, Button, Checkbox, Empty, Modal, Table, Tag, Upload, type TableProps, type UploadFile } from "antd";
+import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { useLocale } from "./providers";
 import styles from "./data-center.module.css";
 
 type ImportMode = "create" | "update";
-type PreviewRow = Record<string, unknown> & { mode?: ImportMode };
+/**
+ * 预检弹窗里的一行，按「文件原样」展示：
+ * cells 是这行在 Excel 里的原始单元格值（与 headers 一一对应），
+ * row 是 Excel 行号（勾选与提交都按它对齐），duplicate 标红，error 不为空表示这行导不了
+ */
+type PreviewRow = {
+  row: number;
+  cells: string[];
+  mode: ImportMode | null;
+  duplicate: boolean;
+  error: string | null;
+  /** 这一行只差客户/产品没建：勾上「一起新建」后它就能导 */
+  fixableByCreate: boolean;
+};
 type ProductRef = { className: string; grade: string };
 type ImportResult = {
   valid: boolean;
@@ -18,6 +31,8 @@ type ImportResult = {
   updateCount?: number;
   imported?: number;
   errors: Array<{ row: number; message: string }>;
+  /** 上传文件自己的表头，弹窗按它动态出列 */
+  headers?: string[];
   preview?: PreviewRow[];
   /** 仅订单导入才有：报错里提到的、系统里还没有的客户/产品，用来问「要不要顺手新建」 */
   missingCustomers?: string[];
@@ -34,10 +49,10 @@ type PanelConfig = {
   exportLabel?: string;
   uploadText: string;
   hint: string;
-  columns: TableProps<PreviewRow>["columns"];
-  rowKey: (row: PreviewRow, index?: number) => string;
   /** 只有订单导入支持「缺客户/产品就顺手新建」 */
   allowMissingCreate?: boolean;
+  /** 标红提示语里那个「重复」指的是什么重复——客户导入是客户名称，订单导入是订单编号 */
+  duplicateLabel: string;
 };
 
 function ImportPanel({ config }: { config: PanelConfig }) {
@@ -47,16 +62,40 @@ function ImportPanel({ config }: { config: PanelConfig }) {
   const [checking, setChecking] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
-  // 缺失客户/产品的勾选名单：默认全选，用户可以取消个别项再新建
-  const [checkedCustomers, setCheckedCustomers] = useState<string[]>([]);
-  const [checkedProducts, setCheckedProducts] = useState<ProductRef[]>([]);
+  // 缺失的客户/产品要不要一起新建，默认要
+  const [createMissing, setCreateMissing] = useState(true);
+  // 预检表格里勾选要导入的 Excel 行号，默认全选
+  const [selectedRows, setSelectedRows] = useState<number[]>([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
-    setCheckedCustomers(result?.missingCustomers ?? []);
-    setCheckedProducts(result?.missingProducts ?? []);
+    setCreateMissing(true);
   }, [result?.missingCustomers, result?.missingProducts]);
 
-  const upload = async (commit: boolean, extra?: { createCustomers?: string[]; createProducts?: ProductRef[] }) => {
+  // 一行能不能导：没问题的行随时能导；只差客户/产品的行，勾上「一起新建」之后也能导
+  const canImportRow = useCallback(
+    (row: PreviewRow) => !row.error || (createMissing && row.fixableByCreate),
+    [createMissing],
+  );
+
+  useEffect(() => {
+    setSelectedRows((result?.preview ?? []).filter((row) => !row.error || row.fixableByCreate).map((row) => row.row));
+  }, [result?.preview]);
+
+  // 「一起新建」开关切换时，靠它才可导的那些行跟着一起取消 / 恢复勾选，
+  // 用户手动勾掉的其它行不受影响
+  useEffect(() => {
+    const rows = result?.preview ?? [];
+    if (createMissing) {
+      const fixable = rows.filter((row) => row.fixableByCreate).map((row) => row.row);
+      setSelectedRows((prev) => [...new Set([...prev, ...fixable])]);
+      return;
+    }
+    const importable = new Set(rows.filter((row) => !row.error).map((row) => row.row));
+    setSelectedRows((prev) => prev.filter((row) => importable.has(row)));
+  }, [createMissing, result?.preview]);
+
+  const upload = async (commit: boolean) => {
     const file = fileList[0]?.originFileObj;
     if (!file) {
       message.warning(t("请先选择导入文件"));
@@ -68,8 +107,12 @@ function ImportPanel({ config }: { config: PanelConfig }) {
       const form = new FormData();
       form.append("file", file);
       form.append("commit", String(commit));
-      if (extra?.createCustomers?.length) form.append("createCustomers", JSON.stringify(extra.createCustomers));
-      if (extra?.createProducts?.length) form.append("createProducts", JSON.stringify(extra.createProducts));
+      if (commit && createMissing) {
+        if (result?.missingCustomers?.length) form.append("createCustomers", JSON.stringify(result.missingCustomers));
+        if (result?.missingProducts?.length) form.append("createProducts", JSON.stringify(result.missingProducts));
+      }
+      // 提交时带上勾选的行号，只导这几行；预检不需要
+      if (commit && selectedRows.length) form.append("selectedRows", JSON.stringify(selectedRows));
       const response = await apiFetch(config.endpoint, { method: "POST", body: form });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message || "Excel 处理失败");
@@ -78,13 +121,14 @@ function ImportPanel({ config }: { config: PanelConfig }) {
         if (payload.data.valid) {
           message.success(t("新增 {created} 条，更新 {updated} 条", { created: payload.data.createCount ?? 0, updated: payload.data.updateCount ?? 0 }));
           setFileList([]);
+          setPreviewOpen(false);
         } else {
           message.warning(t("预检发现错误，请修正后重新上传"));
         }
-      } else if (payload.data.valid) {
-        message.success(t("预检通过，可以确认导入"));
       } else {
-        message.warning(t("预检发现错误，请修正后重新上传"));
+        // 预检完直接把明细弹窗推到面前，问题也在弹窗里逐行看，省得页面上堆一屏红字
+        if (payload.data.preview?.length) setPreviewOpen(true);
+        if (payload.data.valid) message.success(t("预检通过，可以确认导入"));
       }
     } catch (error) {
       message.error(t(error instanceof Error ? error.message : "Excel 处理失败"));
@@ -95,10 +139,39 @@ function ImportPanel({ config }: { config: PanelConfig }) {
   };
 
   const done = result?.imported !== undefined;
-  const showMissingCreate = Boolean(
-    config.allowMissingCreate && !done && result && !result.valid && result.onlyMissingReferences
-    && ((result.missingCustomers?.length ?? 0) > 0 || (result.missingProducts?.length ?? 0) > 0),
-  );
+  const duplicateCount = (result?.preview ?? []).filter((row) => row.duplicate).length;
+  const missingTotal = (result?.missingCustomers?.length ?? 0) + (result?.missingProducts?.length ?? 0);
+  // 表格列 = 固定的「行号 / 处理方式 / 问题」+ 上传文件自己的每一列，原样展示
+  const previewColumns: TableProps<PreviewRow>["columns"] = [
+    { title: t("行号"), dataIndex: "row", width: 76, fixed: "left", render: (value: number) => t("第 {row} 行", { row: value }) },
+    {
+      title: t("处理方式"),
+      dataIndex: "mode",
+      width: 90,
+      fixed: "left",
+      render: (value: ImportMode | null, record) => (canImportRow(record)
+        ? <Tag color={value === "update" ? "gold" : "blue"}>{value === "update" ? t("更新") : t("新增")}</Tag>
+        : <Tag color="red">{t("不可导入")}</Tag>),
+    },
+    ...(result?.headers ?? []).map((header, index) => ({
+      title: header || `#${index + 1}`,
+      key: `cell-${index}`,
+      width: 150,
+      ellipsis: true,
+      render: (_: unknown, record: PreviewRow) => record.cells[index] || <span className={styles.muted}>-</span>,
+    })),
+    {
+      title: t("问题"),
+      dataIndex: "error",
+      width: 220,
+      render: (value: string | null, record) => {
+        if (!value) return <span className={styles.muted}>-</span>;
+        // 只差客户/产品且已勾选一起新建时，这不算错误，导入时会顺手建好
+        const soft = createMissing && record.fixableByCreate;
+        return <span className={soft ? styles.softText : styles.errorText}>{soft ? t("将随导入一起新建") : value}</span>;
+      },
+    },
+  ];
 
   return (
     <div>
@@ -127,7 +200,8 @@ function ImportPanel({ config }: { config: PanelConfig }) {
           </Upload.Dragger>
           <div className={styles.actions}>
             <Button icon={<UploadOutlined />} loading={checking} disabled={!fileList.length} onClick={() => void upload(false)}>{t("开始预检")}</Button>
-            <Button type="primary" loading={importing} disabled={!result?.valid || !fileList.length} onClick={() => void upload(true)}>{t("确认导入")}</Button>
+            {/* 勾选为空时不让点：避免一次什么都没导还提示成功 */}
+            <Button type="primary" loading={importing} disabled={!result?.valid || !fileList.length || !selectedRows.length} onClick={() => void upload(true)}>{t("确认导入")}</Button>
           </div>
         </div>
       </section>
@@ -135,87 +209,98 @@ function ImportPanel({ config }: { config: PanelConfig }) {
         <section className={styles.section}>
           <div className={styles.sectionHeader}><h2 className={styles.sectionTitle}>{done ? t("导入结果") : t("预检结果")}</h2></div>
           <div className={styles.sectionBody}>
-            <div className={styles.resultSummary}>
-              <Tag color={result.valid ? "green" : "red"}>{result.valid ? (done ? t("导入成功") : t("预检通过")) : t("存在错误")}</Tag>
-              {result.totalRows !== undefined ? <span>{t("共 {total} 行，可导入 {valid} 行", { total: result.totalRows, valid: result.validCount ?? 0 })}</span> : null}
-              {/* 新增与更新分开报数，导入前就能看清哪些是覆盖已有数据 */}
-              {result.createCount !== undefined ? <Tag color="blue">{t("新增 {n} 条", { n: result.createCount })}</Tag> : null}
-              {result.updateCount !== undefined ? <Tag color="gold">{t("更新 {n} 条", { n: result.updateCount })}</Tag> : null}
-            </div>
+            {/* 导入完成后只留一条结果提示，不再把同样的数字用标签重复一遍 */}
+            {!done ? (
+              <div className={styles.resultSummary}>
+                <Tag color={result.valid ? "green" : "red"}>{result.valid ? t("预检通过") : t("存在错误")}</Tag>
+                {result.totalRows !== undefined ? <span>{t("共 {total} 行，可导入 {valid} 行", { total: result.totalRows, valid: result.validCount ?? 0 })}</span> : null}
+                {duplicateCount ? (
+                  <Tag color="red">{t("{label}重复 {n} 行", { label: config.duplicateLabel, n: duplicateCount })}</Tag>
+                ) : null}
+                {result.preview?.length ? (
+                  <span className={styles.selectedHint}>{t("已勾选 {n} 行导入", { n: selectedRows.length })}</span>
+                ) : null}
+              </div>
+            ) : null}
             {done ? (
               <Alert
                 showIcon
                 type="success"
-                title={t("新增 {created} 条，更新 {updated} 条", { created: result.createCount ?? 0, updated: result.updateCount ?? 0 })}
-                action={<Button size="small" href="/customers">{t("查看客户")}</Button>}
+                title={t("导入成功")}
+                description={t("新增 {created} 条，更新 {updated} 条", { created: result.createCount ?? 0, updated: result.updateCount ?? 0 })}
+                action={
+                  <div className={styles.resultActions}>
+                    <Button size="small" href="/orders">{t("查看订单")}</Button>
+                    <Button size="small" type="link" href="/customers">{t("查看客户")}</Button>
+                  </div>
+                }
               />
-            ) : result.errors.length ? (
-              <>
-                {showMissingCreate ? (
-                  <Alert
-                    showIcon
-                    type="warning"
-                    className={styles.missingAlert}
-                    title={t("文件里有客户 / 产品在系统中还不存在，是否新建后继续导入？")}
-                    description={
-                      <div className={styles.missingBody}>
-                        {result.missingCustomers?.length ? (
-                          <div className={styles.missingGroup}>
-                            <div className={styles.missingGroupTitle}>{t("新建客户（{n} 个）", { n: result.missingCustomers.length })}</div>
-                            <Checkbox.Group
-                              className={styles.missingList}
-                              value={checkedCustomers}
-                              onChange={(values) => setCheckedCustomers(values as string[])}
-                              options={result.missingCustomers.map((name) => ({ label: name, value: name }))}
-                            />
-                          </div>
-                        ) : null}
-                        {result.missingProducts?.length ? (
-                          <div className={styles.missingGroup}>
-                            <div className={styles.missingGroupTitle}>{t("新建产品（{n} 个）", { n: result.missingProducts.length })}</div>
-                            <Checkbox.Group
-                              className={styles.missingList}
-                              value={checkedProducts.map((item) => `${item.className}||${item.grade}`)}
-                              onChange={(values) => {
-                                const keys = new Set(values as string[]);
-                                setCheckedProducts((result.missingProducts ?? []).filter((item) => keys.has(`${item.className}||${item.grade}`)));
-                              }}
-                              options={(result.missingProducts ?? []).map((item) => ({ label: `${item.className} / ${item.grade}`, value: `${item.className}||${item.grade}` }))}
-                            />
-                          </div>
-                        ) : null}
-                        <Button
-                          type="primary"
-                          size="small"
-                          loading={importing}
-                          disabled={!checkedCustomers.length && !checkedProducts.length}
-                          onClick={() => void upload(true, { createCustomers: checkedCustomers, createProducts: checkedProducts })}
-                        >
-                          {t("新建勾选项并导入")}
-                        </Button>
-                      </div>
-                    }
-                  />
-                ) : null}
-                <ul className={styles.errorList}>
-                  {result.errors.map((error) => <li key={`${error.row}-${error.message}`}>{t("第 {row} 行", { row: error.row })}：{error.message}</li>)}
-                </ul>
-              </>
             ) : result.preview?.length ? (
-              <Table
-                rowKey={config.rowKey}
-                size="small"
-                columns={config.columns}
-                dataSource={result.preview}
-                pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }}
-                scroll={{ x: 1000 }}
-              />
+              // 明细、问题、缺失项处理全都收在弹窗里，页面上不再堆红字
+              <Button type="primary" ghost icon={<TableOutlined />} onClick={() => setPreviewOpen(true)}>
+                {t("查看并勾选导入明细（{n} 行）", { n: result.preview.length })}
+              </Button>
             ) : (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("没有可预览的数据")} />
             )}
           </div>
         </section>
       ) : null}
+
+      {/* 导入明细弹窗：整份文件逐行列出，重复行标红，勾掉的行不导入 */}
+      <Modal
+        title={t("导入明细")}
+        open={previewOpen}
+        onCancel={() => setPreviewOpen(false)}
+        width={1080}
+        centered
+        okText={t("确认导入")}
+        cancelText={t("取消")}
+        okButtonProps={{ loading: importing, disabled: !selectedRows.length }}
+        onOk={() => void upload(true).then(() => setPreviewOpen(false))}
+        styles={{ body: { maxHeight: "calc(100vh - 260px)", overflowY: "auto" } }}
+      >
+        <div className={styles.modalSummary}>
+          <span>{t("共 {n} 行", { n: result?.preview?.length ?? 0 })}</span>
+          {duplicateCount ? (
+            <Tag color="red">{t("{label}重复 {n} 行", { label: config.duplicateLabel, n: duplicateCount })}</Tag>
+          ) : null}
+          <span className={styles.selectedHint}>{t("已勾选 {n} 行导入", { n: selectedRows.length })}</span>
+        </div>
+        {/* 缺客户/产品时给一个开关就够了，不用把几十个名字全铺出来——具体哪几行缺什么，表格「问题」列里逐行写着 */}
+        {config.allowMissingCreate && missingTotal ? (
+          <Alert
+            className={styles.missingAlert}
+            type="warning"
+            showIcon
+            title={
+              <Checkbox checked={createMissing} onChange={(event) => setCreateMissing(event.target.checked)}>
+                {t("同时新建缺失的 {customers} 个客户、{products} 个产品", {
+                  customers: result?.missingCustomers?.length ?? 0,
+                  products: result?.missingProducts?.length ?? 0,
+                })}
+              </Checkbox>
+            }
+            description={<span className={styles.missingHint}>{t("不勾的话，涉及这些客户/产品的行导不进来")}</span>}
+          />
+        ) : null}
+        <Table<PreviewRow>
+          rowKey={(row) => String(row.row)}
+          size="small"
+          columns={previewColumns}
+          dataSource={result?.preview ?? []}
+          // 重复的行整行标红，一眼看出哪几行是同一个客户/同一个编号
+          rowClassName={(row) => (row.duplicate ? styles.duplicateRow : "")}
+          rowSelection={{
+            selectedRowKeys: selectedRows.map(String),
+            onChange: (keys) => setSelectedRows(keys.map((key) => Number(key))),
+            // 导不进去的行禁掉勾选（只差客户/产品的行，勾上「一起新建」后就放开）
+            getCheckboxProps: (row) => ({ disabled: !canImportRow(row) }),
+          }}
+          pagination={{ pageSize: 10, showSizeChanger: false, showTotal: (total) => t("共 {n} 条", { n: total }) }}
+          scroll={{ x: "max-content" }}
+        />
+      </Modal>
     </div>
   );
 }
@@ -223,73 +308,19 @@ function ImportPanel({ config }: { config: PanelConfig }) {
 export function DataCenter() {
   const { t } = useLocale();
 
-  // 预检表格第一列统一标出这一行是新增还是覆盖已有记录
-  const modeColumn = {
-    title: t("处理方式"),
-    dataIndex: "mode",
-    width: 90,
-    render: (value: ImportMode) => (
-      <Tag color={value === "update" ? "gold" : "blue"}>{value === "update" ? t("更新") : t("新增")}</Tag>
-    ),
-  };
-
-  const customerStatusLabels: Record<string, string> = {
-    potential: t("潜在客户"),
-    active: t("活跃客户"),
-    inactive: t("已停用"),
-  };
-
-  const customers: PanelConfig = {
-    endpoint: "/api/data/customers-import",
-    templateHref: "/api/data/customers-template",
-    templateLabel: t("下载客户模板"),
-    uploadText: t("选择或拖入客户 Excel / CSV"),
-    hint: t("支持 .xlsx / .csv，单个文件不超过 5MB；同名客户按名称匹配并更新，留空的列保持原值；联系人只导入第一位，名片图片请在客户档案里上传"),
-    rowKey: (row, index) => `${String(row.name ?? "")}-${index}`,
-    columns: [
-      modeColumn,
-      { title: t("客户名称"), dataIndex: "name", width: 200, ellipsis: true },
-      { title: t("简称"), dataIndex: "shortName", width: 110, ellipsis: true, render: (value) => String(value || "-") },
-      { title: t("英文名称"), dataIndex: "nameEn", width: 190, ellipsis: true, render: (value) => String(value || "-") },
-      { title: t("客户分类"), dataIndex: "category", width: 110, render: (value) => String(value || "-") },
-      { title: t("行业"), dataIndex: "industry", width: 110, render: (value) => String(value || "-") },
-      { title: t("负责人"), dataIndex: "ownerName", width: 100, render: (value) => String(value || "-") },
-      { title: t("状态"), dataIndex: "status", width: 100, render: (value) => customerStatusLabels[String(value)] || String(value || "-") },
-      { title: t("主要联系人"), dataIndex: "contactName", width: 120, ellipsis: true, render: (value) => String(value || "-") },
-    ],
-  };
-
+  // 只有一个导入入口：每月那张订单记录表。表里的客户/产品在系统中不存在时，
+  // 预检会问「要不要顺手新建」，不需要再单独走一遍客户名单导入
   const orders: PanelConfig = {
     endpoint: "/api/data/orders-import",
     templateHref: "/api/data/orders-template",
     exportHref: "/api/data/orders-export",
-    templateLabel: t("下载订单模板"),
+    templateLabel: t("下载导入模板"),
     exportLabel: t("导出全部订单"),
-    uploadText: t("选择或拖入订单 Excel / CSV"),
-    hint: t("支持 .xlsx / .csv，单个文件不超过 5MB；订单编号已存在的行会更新该订单，留空的列保持原值"),
+    uploadText: t("选择或拖入订单记录表 Excel / CSV"),
+    hint: t("支持 .xlsx / .csv，单个文件不超过 5MB；按行导入，表里的客户与产品如果系统中还没有，预检时可以一起新建"),
     allowMissingCreate: true,
-    rowKey: (row, index) => `${String(row.orderNo ?? "")}-${index}`,
-    columns: [
-      modeColumn,
-      { title: t("订单编号"), dataIndex: "orderNo", width: 160, render: (value) => (value ? String(value) : t("导入后自动生成")) },
-      { title: t("下单日期"), dataIndex: "orderDate", width: 110 },
-      { title: t("客户"), dataIndex: "customerName", width: 190, ellipsis: true },
-      { title: t("产品"), key: "product", width: 140, render: (_, row) => `${row.className} / ${row.grade}` },
-      { title: t("数量"), dataIndex: "quantity", width: 90 },
-      { title: t("单价"), dataIndex: "price", width: 100 },
-      { title: t("实际出货"), dataIndex: "actualShipmentDate", width: 110, render: (value) => String(value || "-") },
-      { title: t("预计到港"), dataIndex: "expectedArrivalDate", width: 110, render: (value) => String(value || "-") },
-    ],
+    duplicateLabel: t("订单编号"),
   };
 
-  return (
-    <Tabs
-      defaultActiveKey="customers"
-      items={[
-        // 客户名单在前：先把开发中的客户导进来，订单导入时才能按客户名匹配上
-        { key: "customers", label: t("客户名单"), children: <ImportPanel config={customers} /> },
-        { key: "orders", label: t("订单"), children: <ImportPanel config={orders} /> },
-      ]}
-    />
-  );
+  return <ImportPanel config={orders} />;
 }

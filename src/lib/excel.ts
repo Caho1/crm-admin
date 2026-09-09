@@ -58,28 +58,6 @@ export const orderExcelColumns = [
   { header: "Remark", key: "notes", width: 20 },
 ] as const;
 
-// 客户名单导入：只做客户档案本身 + 主要联系人（第一位），其余联系人、名片图片、
-// 协作成员等仍在界面里维护
-export const customerExcelColumns = [
-  { header: "客户名称（中文）", key: "name", width: 28 },
-  { header: "客户名称（英文）", key: "nameEn", width: 30 },
-  { header: "客户简称", key: "shortName", width: 16 },
-  { header: "客户分类", key: "category", width: 14 },
-  { header: "行业", key: "industry", width: 14 },
-  { header: "国家", key: "country", width: 12 },
-  { header: "地区", key: "region", width: 12 },
-  { header: "详细地址", key: "address", width: 30 },
-  { header: "客户简介", key: "description", width: 34 },
-  { header: "负责人", key: "ownerName", width: 12 },
-  { header: "客户状态", key: "status", width: 12 },
-  { header: "主要联系人", key: "contactName", width: 14 },
-  { header: "联系人英文姓名", key: "contactNameEn", width: 18 },
-  { header: "联系人职位", key: "contactTitle", width: 14 },
-  { header: "联系电话", key: "contactPhone", width: 18 },
-  { header: "联系邮箱", key: "contactEmail", width: 22 },
-  { header: "联系人性格爱好", key: "contactPersonality", width: 28 },
-] as const;
-
 function styleSheet(worksheet: ExcelJS.Worksheet, lastColumn: string) {
   worksheet.views = [{ state: "frozen", ySplit: 1 }];
   worksheet.autoFilter = { from: "A1", to: `${lastColumn}1` };
@@ -97,10 +75,6 @@ export function styleOrderSheet(worksheet: ExcelJS.Worksheet) {
   styleSheet(worksheet, "T");
   worksheet.getColumn("quantity").numFmt = "0.00";
   worksheet.getColumn("price").numFmt = "#,##0.00";
-}
-
-export function styleCustomerSheet(worksheet: ExcelJS.Worksheet) {
-  styleSheet(worksheet, "Q");
 }
 
 export function normalizeHeader(value: unknown) {
@@ -132,26 +106,6 @@ export const headerAliases: Record<string, string[]> = {
   invoiceNo: ["invoice", "invoiceno", "发票号"],
   status: ["status", "状态"],
   notes: ["remark", "notes", "备注"],
-};
-
-export const customerHeaderAliases: Record<string, string[]> = {
-  name: ["客户名称", "客户名称中文", "客户", "中文名称", "customer", "customername", "name"],
-  nameEn: ["客户名称英文", "英文名称", "英文名", "customernameen", "nameen", "englishname"],
-  shortName: ["客户简称", "简称", "shortname", "abbreviation", "abbr"],
-  category: ["客户分类", "分类", "category"],
-  industry: ["行业", "industry"],
-  country: ["国家", "country"],
-  region: ["地区", "城市", "region"],
-  address: ["详细地址", "地址", "address"],
-  description: ["客户简介", "简介", "备注", "description"],
-  ownerName: ["负责人", "销售负责人", "owner", "ownername"],
-  status: ["客户状态", "状态", "status"],
-  contactName: ["主要联系人", "联系人", "联系人姓名", "联系人中文姓名", "contact", "contactname"],
-  contactNameEn: ["联系人英文姓名", "联系人英文名", "英文姓名", "contactnameen", "contactenglishname"],
-  contactTitle: ["联系人职位", "职位", "contacttitle", "title"],
-  contactPhone: ["联系电话", "电话", "手机", "contactphone", "phone"],
-  contactEmail: ["联系邮箱", "邮箱", "contactemail", "email"],
-  contactPersonality: ["联系人性格爱好", "性格爱好", "性格", "爱好", "contactpersonality", "personality"],
 };
 
 export function parseExcelDate(value: unknown) {

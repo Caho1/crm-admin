@@ -66,6 +66,13 @@
   gap: 8px;
 }
 
+.resultActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
 .errorList {
   max-height: 240px;
   overflow: auto;
@@ -77,6 +84,21 @@
 
 .missingAlert {
   margin-bottom: 14px;
+}
+
+/* 文件里同名/同编号的行整行标红，勾选时一眼能认出是同一组 */
+.duplicateRow > td {
+  background: #fff4f4 !important;
+  color: #b42318;
+}
+
+.duplicateRow:hover > td {
+  background: #ffe9e9 !important;
+}
+
+.selectedHint {
+  color: #98a2b3;
+  font-size: 12px;
 }
 
 .missingBody {
@@ -117,4 +139,34 @@
     flex-direction: column;
     padding: 14px;
   }
+}
+
+/* 明细弹窗顶部的行数 / 重复数 / 已勾选数 */
+.modalSummary {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #475467;
+  font-size: 13px;
+}
+
+.muted {
+  color: #c2cad6;
+}
+
+.errorText {
+  color: #b42318;
+  font-size: 12px;
+}
+
+.softText {
+  color: #b45309;
+  font-size: 12px;
+}
+
+.missingHint {
+  color: #98a2b3;
+  font-size: 12px;
 }

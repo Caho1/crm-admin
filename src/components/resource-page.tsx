@@ -92,7 +92,7 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       endpoint: "/api/customers",
       createLabel: t("新建客户"),
       editLabel: t("编辑客户"),
-      searchPlaceholder: t("名称、简称、负责人、联系人、地址、分类、行业"),
+      searchPlaceholder: t("名称、简称、跟进人、负责人、联系人、地址、分类、行业"),
       filterKey: "status",
       filterPlaceholder: t("客户状态"),
       filterOptions: customerStatuses,
@@ -108,6 +108,8 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
         { title: t("客户分类"), dataIndex: "category", width: 110, kind: "dict", dictType: "customer_category" },
         { title: t("国家 / 地区"), key: "location", width: 130 },
         { title: t("行业"), dataIndex: "industry", width: 110, ellipsis: true },
+        // 跟进人是表里 P.I.C 那一列的名字，跟系统账号无关；负责人才是系统用户
+        { title: t("跟进人"), dataIndex: "pic", width: 100, ellipsis: true },
         { title: t("负责人"), dataIndex: "ownerName", width: 110, ellipsis: true },
         { title: t("协作人"), dataIndex: "memberNames", width: 110, ellipsis: true },
         { title: t("最近拜访"), dataIndex: "latestVisitDate", width: 110, kind: "date" },
@@ -520,6 +522,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
                 <dl className={styles.cardMeta}>
                   <div><dt>{t("客户编号")}</dt><dd>{record.id as number}</dd></div>
                   <div><dt>{t("国家 / 地区")}</dt><dd>{location || "-"}</dd></div>
+                  <div><dt>{t("跟进人")}</dt><dd>{String(record.pic || "-")}</dd></div>
                   <div><dt>{t("负责人")}</dt><dd>{String(record.ownerName || "-")}</dd></div>
                   <div><dt>{t("最近拜访")}</dt><dd>{String(record.latestVisitDate || "-")}</dd></div>
                   <div><dt>{t("订单")}</dt><dd>{formatNumber(record.orderCount)}</dd></div>

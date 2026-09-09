@@ -320,6 +320,29 @@ function buildPreviewPayload(parsed: ParsedOrders) {
   };
 }
 
+/**
+ * 把 P.I.C 回填成客户的跟进人。跟进人写在订单行上，但业务上一个客户基本固定一个人跟，
+ * 所以客户档案上也留一份。一个客户在这批数据里出现多个 P.I.C 时（大客户按产品线分给
+ * 几个人），取单数最多的那个当主跟进人——逐单是谁跟的，订单自己那一列还留着。
+ * 只填客户跟进人为空的，系统里手工改过的不覆盖。
+ */
+function fillCustomerPic(db: Database.Database, validRows: ImportedOrder[]) {
+  const tally = new Map<number, Map<string, number>>();
+  for (const row of validRows) {
+    if (!row.pic) continue;
+    const counts = tally.get(row.customerId) ?? new Map<string, number>();
+    counts.set(row.pic, (counts.get(row.pic) ?? 0) + 1);
+    tally.set(row.customerId, counts);
+  }
+  const update = db.prepare(
+    "UPDATE customers SET pic = ?, updated_at = datetime('now') WHERE id = ? AND pic = ''",
+  );
+  for (const [customerId, counts] of tally) {
+    const [top] = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    if (top) update.run(top[0].slice(0, 60), customerId);
+  }
+}
+
 /** 写订单本体，不自己开事务——调用方决定要不要跟「新建缺失客户/产品」合并成一个事务 */
 function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: SessionUser) {
   // 实际落库时的新建/更新条数：同一个编号勾了多行时只会建一条，报数按真实发生的算
@@ -356,6 +379,7 @@ function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: 
   const fillApplication = db.prepare(
     "UPDATE products SET application = ?, updated_at = datetime('now') WHERE id = ? AND application = ''",
   );
+  fillCustomerPic(db, validRows);
   for (const row of validRows) {
     if (row.application) fillApplication.run(row.application.slice(0, 500), row.productId);
     // 同一个订单编号勾了多行时，第一行建单、后面几行更新同一条（不然会撞 order_no 的唯一约束）。

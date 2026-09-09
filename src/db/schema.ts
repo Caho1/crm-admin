@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS customers (
   country TEXT NOT NULL DEFAULT '',
   region TEXT NOT NULL DEFAULT '',
   industry TEXT NOT NULL DEFAULT '',
+  -- 跟进人（原表 P.I.C 那一列）：客户的主跟进人，纯文本，与 owner_id 无关
+  pic TEXT NOT NULL DEFAULT '',
   address TEXT NOT NULL DEFAULT '',
   description TEXT NOT NULL DEFAULT '',
   owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
@@ -240,6 +242,7 @@ export const columnMigrations: Array<{ table: string; column: string; ddl: strin
   { table: "orders", column: "order_nature", ddl: "ALTER TABLE orders ADD COLUMN order_nature TEXT NOT NULL DEFAULT ''" },
   { table: "orders", column: "production_base", ddl: "ALTER TABLE orders ADD COLUMN production_base TEXT NOT NULL DEFAULT ''" },
   { table: "orders", column: "pic", ddl: "ALTER TABLE orders ADD COLUMN pic TEXT NOT NULL DEFAULT ''" },
+  { table: "customers", column: "pic", ddl: "ALTER TABLE customers ADD COLUMN pic TEXT NOT NULL DEFAULT ''" },
 ];
 
 // 依赖新增列的索引，必须等 columnMigrations 补完列之后再建

@@ -296,6 +296,7 @@ export function CustomerProfile({ id }: { id: number }) {
           <div className={styles.headerMeta}>
             <span><b>{t("客户编号")}</b> {id}</span>
             {customer.shortName ? <span><b>{t("简称")}</b> {customer.shortName}</span> : null}
+            {customer.pic ? <span><b>{t("跟进人")}</b> {String(customer.pic)}</span> : null}
             <span><b>{t("负责人")}</b> {customer.ownerName}</span>
             {location ? <span><b>{t("国家 / 地区")}</b> {location}</span> : null}
             {industryLabel ? <span><b>{t("行业")}</b> {industryLabel}</span> : null}

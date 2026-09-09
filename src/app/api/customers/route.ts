@@ -26,6 +26,7 @@ export async function GET(request: Request) {
         `(
           c.name LIKE ? OR c.name_en LIKE ? OR c.short_name LIKE ? OR c.address LIKE ? OR c.country LIKE ?
           OR c.region LIKE ? OR c.description LIKE ? OR c.industry LIKE ? OR c.category LIKE ?
+          OR c.pic LIKE ?
           OR EXISTS (SELECT 1 FROM users u WHERE u.id = c.owner_id AND u.name LIKE ?)
           OR EXISTS (
             SELECT 1 FROM customer_members cm JOIN users mu ON mu.id = cm.user_id
@@ -41,7 +42,7 @@ export async function GET(request: Request) {
               AND (d.label LIKE ? OR d.label_en LIKE ? OR d.label_ko LIKE ?)
           )
         )`,
-        ...Array<string>(19).fill(value),
+        ...Array<string>(20).fill(value),
       );
     }
     if (searchParams.get("status")) {
@@ -64,7 +65,7 @@ export async function GET(request: Request) {
       .prepare(`
         SELECT c.id, c.name, c.name_en AS nameEn, c.short_name AS shortName, c.category, c.country, c.region,
           c.industry, c.address, c.description,
-          c.owner_id AS ownerId, owner.name AS ownerName, c.status,
+          c.owner_id AS ownerId, owner.name AS ownerName, c.pic, c.status,
           c.created_at AS createdAt, c.updated_at AS updatedAt,
           (SELECT GROUP_CONCAT(u.name, '、') FROM customer_members cm
            JOIN users u ON u.id = cm.user_id WHERE cm.customer_id = c.id) AS memberNames,
@@ -99,9 +100,9 @@ export async function POST(request: Request) {
     const result = db.transaction(() => {
       const inserted = db.prepare(`
         INSERT INTO customers
-          (name, name_en, short_name, category, country, region, industry, address, description, owner_id, status, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(input.name, input.nameEn, input.shortName, input.category, input.country, input.region, input.industry, input.address, input.description, ownerId, input.status, user.id);
+          (name, name_en, short_name, category, country, region, industry, pic, address, description, owner_id, status, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(input.name, input.nameEn, input.shortName, input.category, input.country, input.region, input.industry, input.pic, input.address, input.description, ownerId, input.status, user.id);
       const customerId = Number(inserted.lastInsertRowid);
       const memberInsert = db.prepare(`
         INSERT OR IGNORE INTO customer_members (customer_id, user_id, access) VALUES (?, ?, 'view')

@@ -62,6 +62,8 @@ export const customerSchema = z.object({
   country: optionalText(80),
   region: optionalText(80),
   industry: optionalText(120),
+  // 跟进人只是个名字，不是系统用户；客户负责人仍走 ownerId
+  pic: optionalText(60),
   address: optionalText(240),
   description: optionalText(2000),
   ownerId: positiveId.optional(),

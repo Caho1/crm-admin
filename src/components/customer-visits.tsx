@@ -179,7 +179,7 @@ export function CustomerVisits({
       ),
     },
     { title: t("关联产品"), dataIndex: "productLabels", width: 160, ellipsis: true, render: (value) => value || <span className={resStyles.muted}>-</span> },
-    { title: t("创建人"), dataIndex: "creatorName", width: 90 },
+    { title: t("创建人"), dataIndex: "creatorName", width: 110, ellipsis: true },
     { title: t("状态"), dataIndex: "status", width: 90, render: (value) => <StatusTag value={String(value)} /> },
     {
       title: t("操作"),

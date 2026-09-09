@@ -225,17 +225,17 @@ export function CustomerOrders({
     { title: t("订单性质"), dataIndex: "orderNature", width: 110, render: (value) => value ? <Tag>{dictLabelOf(orderNatures, String(value), locale)}</Tag> : <span className={resStyles.muted}>-</span> },
     { title: t("生产基地"), dataIndex: "productionBase", width: 100, render: (value) => value ? <Tag>{dictLabelOf(productionBases, String(value), locale)}</Tag> : <span className={resStyles.muted}>-</span> },
     // 跟进人是表里 P.I.C 那一列的名字，跟系统账号无关，所以只显示文本
-    { title: t("跟进人"), dataIndex: "pic", width: 90, render: (value) => value || <span className={resStyles.muted}>-</span> },
+    { title: t("跟进人"), dataIndex: "pic", width: 100, ellipsis: true, render: (value) => value || <span className={resStyles.muted}>-</span> },
     { title: t("目的地"), dataIndex: "destination", width: 120, ellipsis: true, render: (value) => value || <span className={resStyles.muted}>-</span> },
     { title: t("贸易条款"), dataIndex: "tradeTerms", width: 100, render: (value) => value || <span className={resStyles.muted}>-</span> },
     { title: t("付款方式"), dataIndex: "paymentMethod", width: 110, render: (value) => value || <span className={resStyles.muted}>-</span> },
     { title: t("出货月份"), dataIndex: "shipmentMonth", width: 105, render: (value) => value || <span className={resStyles.muted}>-</span> },
-    { title: t("LC / TT 日期"), dataIndex: "lcTtDate", width: 120, render: (value) => value || <span className={resStyles.muted}>-</span> },
+    { title: t("LC / TT 日期"), dataIndex: "lcTtDate", width: 130, render: (value) => value || <span className={resStyles.muted}>-</span> },
     { title: t("实际出货"), dataIndex: "actualShipmentDate", width: 110, render: (value) => value || <span className={resStyles.muted}>-</span> },
     { title: t("预计到港"), dataIndex: "expectedArrivalDate", width: 110, render: (value) => value || <span className={resStyles.muted}>-</span> },
     { title: t("合同号"), dataIndex: "contractNo", width: 110, render: (value) => value || <span className={resStyles.muted}>-</span> },
     { title: t("发票号"), dataIndex: "invoiceNo", width: 110, render: (value) => value || <span className={resStyles.muted}>-</span> },
-    { title: t("负责人"), dataIndex: "ownerName", width: 90 },
+    { title: t("负责人"), dataIndex: "ownerName", width: 110, ellipsis: true },
   ];
 
   const dataColumns = compact ? compactColumns : fullColumns;

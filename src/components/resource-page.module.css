@@ -98,6 +98,8 @@
   border-bottom: 1px solid #e7ecf3;
   padding-top: 11px;
   padding-bottom: 11px;
+  /* 表头一律单行：列宽由 columns 里的 width 保证够宽，见各表列定义 */
+  white-space: nowrap;
 }
 
 .tableFrame :global(.ant-table-thead > tr > th::before) {

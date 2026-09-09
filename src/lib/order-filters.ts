@@ -13,7 +13,8 @@ export function buildOrderFilters(searchParams: URLSearchParams, user: SessionUs
     addCondition(conditions, params, `(
       ord.order_no LIKE ? OR c.name LIKE ? OR p.grade LIKE ? OR p.class_name LIKE ?
       OR ord.contract_no LIKE ? OR ord.invoice_no LIKE ? OR ord.destination LIKE ?
-    )`, value, value, value, value, value, value, value);
+      OR ord.pic LIKE ?
+    )`, value, value, value, value, value, value, value, value);
   }
   if (searchParams.get("status")) addCondition(conditions, params, "ord.status = ?", searchParams.get("status"));
   if (searchParams.get("currency")) addCondition(conditions, params, "ord.currency = ?", searchParams.get("currency"));

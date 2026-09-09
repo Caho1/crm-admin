@@ -165,6 +165,8 @@ CREATE TABLE IF NOT EXISTS orders (
   currency TEXT NOT NULL DEFAULT 'USD',
   order_nature TEXT NOT NULL DEFAULT '',
   production_base TEXT NOT NULL DEFAULT '',
+  -- 跟进人（原表的 P.I.C 列）：只是个名字，不挂系统账号，与 owner_id 无关
+  pic TEXT NOT NULL DEFAULT '',
   destination TEXT NOT NULL DEFAULT '',
   trade_terms TEXT NOT NULL DEFAULT '',
   payment_method TEXT NOT NULL DEFAULT '',
@@ -237,6 +239,7 @@ export const columnMigrations: Array<{ table: string; column: string; ddl: strin
   { table: "contacts", column: "sort_order", ddl: "ALTER TABLE contacts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0" },
   { table: "orders", column: "order_nature", ddl: "ALTER TABLE orders ADD COLUMN order_nature TEXT NOT NULL DEFAULT ''" },
   { table: "orders", column: "production_base", ddl: "ALTER TABLE orders ADD COLUMN production_base TEXT NOT NULL DEFAULT ''" },
+  { table: "orders", column: "pic", ddl: "ALTER TABLE orders ADD COLUMN pic TEXT NOT NULL DEFAULT ''" },
 ];
 
 // 依赖新增列的索引，必须等 columnMigrations 补完列之后再建

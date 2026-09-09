@@ -22,7 +22,7 @@ export async function GET(request: Request) {
         ord.customer_id AS customerId, c.name AS customerName,
         ord.product_id AS productId, p.class_name AS className, p.grade,
         ord.quantity, ord.price, ord.quantity * ord.price AS amount, ord.currency,
-        ord.order_nature AS orderNature, ord.production_base AS productionBase, ord.destination,
+        ord.order_nature AS orderNature, ord.production_base AS productionBase, ord.pic, ord.destination,
         ord.trade_terms AS tradeTerms, ord.payment_method AS paymentMethod,
         ord.shipment_month AS shipmentMonth, ord.lc_tt_date AS lcTtDate,
         ord.actual_shipment_date AS actualShipmentDate,
@@ -67,12 +67,12 @@ export async function POST(request: Request) {
       const result = db.prepare(`
         INSERT INTO orders
           (order_no, order_date, customer_id, product_id, quantity, price, currency,
-           order_nature, production_base, destination, trade_terms, payment_method,
+           order_nature, production_base, pic, destination, trade_terms, payment_method,
            shipment_month, lc_tt_date, actual_shipment_date, expected_arrival_date,
            contract_no, invoice_no, status, owner_id, notes, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(explicitOrderNo ?? sequentialPlaceholder(), input.orderDate, input.customerId, input.productId, input.quantity,
-        input.price, input.currency, input.orderNature, input.productionBase, input.destination,
+        input.price, input.currency, input.orderNature, input.productionBase, input.pic, input.destination,
         input.tradeTerms, input.paymentMethod, input.shipmentMonth, input.lcTtDate,
         input.actualShipmentDate, input.expectedArrivalDate,
         input.contractNo, input.invoiceNo, input.status, ownerId, input.notes, user.id);

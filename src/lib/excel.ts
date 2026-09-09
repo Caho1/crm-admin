@@ -40,11 +40,14 @@ export const orderExcelColumns = [
   { header: "Customer", key: "customerName", width: 28 },
   { header: "Classi", key: "className", width: 12 },
   { header: "Grade", key: "grade", width: 14 },
+  // 用途是牌号的属性（客户表里是 VLOOKUP 出来的），导入时落到 products.application
+  { header: "Application", key: "application", width: 18 },
   { header: "Quantity", key: "quantity", width: 12 },
   { header: "Price", key: "price", width: 14 },
   { header: "Currency", key: "currency", width: 10 },
   { header: "Order Nature", key: "orderNature", width: 14 },
   { header: "Production Base", key: "productionBase", width: 14 },
+  { header: "P.I.C", key: "pic", width: 12 },
   { header: "Destination", key: "destination", width: 16 },
   { header: "Terms", key: "tradeTerms", width: 12 },
   { header: "Payment", key: "paymentMethod", width: 14 },
@@ -58,9 +61,10 @@ export const orderExcelColumns = [
   { header: "Remark", key: "notes", width: 20 },
 ] as const;
 
-function styleSheet(worksheet: ExcelJS.Worksheet, lastColumn: string) {
+function styleSheet(worksheet: ExcelJS.Worksheet) {
   worksheet.views = [{ state: "frozen", ySplit: 1 }];
-  worksheet.autoFilter = { from: "A1", to: `${lastColumn}1` };
+  // 末列按实际列数算，加减列时不用再回来改这个字母
+  worksheet.autoFilter = { from: "A1", to: `${worksheet.getColumn(worksheet.columnCount).letter}1` };
   const header = worksheet.getRow(1);
   header.height = 26;
   header.font = { bold: true, color: { argb: "FF172033" } };
@@ -72,7 +76,7 @@ function styleSheet(worksheet: ExcelJS.Worksheet, lastColumn: string) {
 }
 
 export function styleOrderSheet(worksheet: ExcelJS.Worksheet) {
-  styleSheet(worksheet, "T");
+  styleSheet(worksheet);
   worksheet.getColumn("quantity").numFmt = "0.00";
   worksheet.getColumn("price").numFmt = "#,##0.00";
 }
@@ -90,11 +94,15 @@ export const headerAliases: Record<string, string[]> = {
   customerName: ["customer", "客户", "客户名称"],
   className: ["classi", "class", "classify", "分类", "产品大类"],
   grade: ["grade", "牌号", "型号", "产品牌号"],
+  // 용도 = 韩语「用途」，客户表里用这一列记这个牌号最终做什么产品
+  application: ["application", "용도", "用途", "enduse", "产品用途"],
   quantity: ["quantity", "qty", "数量", "quantitymt"],
   price: ["price", "单价", "价格"],
   currency: ["currency", "币种", "salesmethod"],
   orderNature: ["ordernature", "订单性质"],
   productionBase: ["productionbase", "生产基地"],
+  // P.I.C = Person In Charge，落成订单上的跟进人（纯文本，不挂系统账号）
+  pic: ["pic", "跟进人", "担当", "담당자"],
   destination: ["destination", "目的地"],
   tradeTerms: ["terms", "tradeterms", "贸易条款"],
   paymentMethod: ["payment", "paymentmethod", "付款方式"],

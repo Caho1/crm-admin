@@ -27,13 +27,13 @@ export async function PUT(request: Request, context: Context) {
     const ownerId = user.role === "admin" && input.ownerId ? input.ownerId : current.ownerId;
     db.prepare(`
       UPDATE orders SET order_no = ?, order_date = ?, customer_id = ?, product_id = ?,
-        quantity = ?, price = ?, currency = ?, order_nature = ?, production_base = ?,
+        quantity = ?, price = ?, currency = ?, order_nature = ?, production_base = ?, pic = ?,
         destination = ?, trade_terms = ?, payment_method = ?, shipment_month = ?,
         lc_tt_date = ?, actual_shipment_date = ?, expected_arrival_date = ?,
         contract_no = ?, invoice_no = ?, status = ?,
         owner_id = ?, notes = ?, updated_at = datetime('now') WHERE id = ?
     `).run(orderNo, input.orderDate, input.customerId, input.productId, input.quantity,
-      input.price, input.currency, input.orderNature, input.productionBase, input.destination,
+      input.price, input.currency, input.orderNature, input.productionBase, input.pic, input.destination,
       input.tradeTerms, input.paymentMethod, input.shipmentMonth, input.lcTtDate,
       input.actualShipmentDate, input.expectedArrivalDate,
       input.contractNo, input.invoiceNo, input.status, ownerId, input.notes, id);

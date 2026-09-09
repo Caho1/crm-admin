@@ -9,15 +9,23 @@ import { IMPORT_FILE_PATTERN, headerAliases, normalizeHeader, parseExcelDate, pa
 
 export const runtime = "nodejs";
 
+/** #N/A、#REF! 这类公式错误值当空处理——源表里用 VLOOKUP 填的列常有查不到的行 */
+function isErrorValue(value: unknown) {
+  return Boolean(value && typeof value === "object" && "error" in value);
+}
+
 /** Excel 单元格值 → 纯文本：富文本、公式结果、日期都要能正确取到，不能落成 [object Object] */
 function cellToText(value: ExcelJS.CellValue): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (isErrorValue(value)) return "";
   if (typeof value === "object" && "richText" in value) {
     return (value.richText as Array<{ text: string }>).map((part) => part.text).join("").trim();
   }
   if (typeof value === "object" && "text" in value) return String(value.text).trim();
-  if (typeof value === "object" && "result" in value) return String(value.result ?? "").trim();
+  if (typeof value === "object" && "result" in value) {
+    return isErrorValue(value.result) ? "" : String(value.result ?? "").trim();
+  }
   return String(value).trim();
 }
 
@@ -38,12 +46,16 @@ type ImportedOrder = {
   productId: number;
   className: string;
   grade: string;
+  /** 用途（용도）：写在订单行上，但它是牌号的属性，落库时回填到 products.application */
+  application: string | null;
   quantity: number;
   price: number;
   /** 以下可选列留空表示「不改」：新建时落默认值，更新时保持库里原值 */
   currency: string | null;
   orderNature: string | null;
   productionBase: string | null;
+  /** 跟进人（P.I.C）：纯文本，不解析成系统账号 */
+  pic: string | null;
   destination: string | null;
   tradeTerms: string | null;
   paymentMethod: string | null;
@@ -83,8 +95,11 @@ function valueOf(row: ExcelJS.Row, mapping: Record<string, number>, field: strin
   const column = mapping[field];
   if (!column) return null;
   const value = row.getCell(column).value;
+  if (isErrorValue(value)) return null;
   if (value && typeof value === "object" && "text" in value) return String(value.text);
-  if (value && typeof value === "object" && "result" in value) return value.result;
+  if (value && typeof value === "object" && "result" in value) {
+    return isErrorValue(value.result) ? null : value.result;
+  }
   return value;
 }
 
@@ -245,11 +260,13 @@ function parseOrderRows(worksheet: ExcelJS.Worksheet, mapping: Record<string, nu
       productId: product!.id,
       className: product!.className,
       grade: product!.grade,
+      application: optionalText(valueOf(row, mapping, "application")),
       quantity: quantity!,
       price: price!,
       currency: parseCurrency(valueOf(row, mapping, "currency")),
       orderNature: optionalText(valueOf(row, mapping, "orderNature")),
       productionBase: optionalText(valueOf(row, mapping, "productionBase")),
+      pic: optionalText(valueOf(row, mapping, "pic")),
       destination: optionalText(valueOf(row, mapping, "destination")),
       tradeTerms: optionalText(valueOf(row, mapping, "tradeTerms")),
       paymentMethod: optionalText(valueOf(row, mapping, "paymentMethod")),
@@ -311,16 +328,17 @@ function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: 
   const insert = db.prepare(`
     INSERT INTO orders
       (order_no, order_date, customer_id, product_id, quantity, price, currency,
-       order_nature, production_base, destination, trade_terms, payment_method, shipment_month, lc_tt_date,
+       order_nature, production_base, pic, destination, trade_terms, payment_method, shipment_month, lc_tt_date,
        actual_shipment_date, expected_arrival_date, contract_no, invoice_no,
        status, owner_id, notes, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   // 可选列 → 数据库列，更新时只写文件里填了的
   const optionalColumns: Array<[keyof ImportedOrder, string]> = [
     ["currency", "currency"],
     ["orderNature", "order_nature"],
     ["productionBase", "production_base"],
+    ["pic", "pic"],
     ["destination", "destination"],
     ["tradeTerms", "trade_terms"],
     ["paymentMethod", "payment_method"],
@@ -333,7 +351,13 @@ function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: 
     ["status", "status"],
     ["notes", "notes"],
   ];
+  // 用途写在订单行上，实际是牌号的属性：产品还没填用途时补上，已经填了的不覆盖
+  // （系统里手工改过的口径优先于表格里 VLOOKUP 出来的值）
+  const fillApplication = db.prepare(
+    "UPDATE products SET application = ?, updated_at = datetime('now') WHERE id = ? AND application = ''",
+  );
   for (const row of validRows) {
+    if (row.application) fillApplication.run(row.application.slice(0, 500), row.productId);
     // 同一个订单编号勾了多行时，第一行建单、后面几行更新同一条（不然会撞 order_no 的唯一约束）。
     // 所以这里按写库当下的状态重新判定新建还是更新，而不是沿用预检时算好的 mode
     const existingId = row.orderNo
@@ -343,7 +367,7 @@ function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: 
       createCount += 1;
       const owner = db.prepare("SELECT owner_id AS ownerId FROM customers WHERE id = ?").get(row.customerId) as { ownerId: number };
       const result = insert.run(row.orderNo ?? sequentialPlaceholder(), row.orderDate, row.customerId, row.productId, row.quantity,
-        row.price, row.currency ?? "USD", row.orderNature ?? "", row.productionBase ?? "",
+        row.price, row.currency ?? "USD", row.orderNature ?? "", row.productionBase ?? "", row.pic ?? "",
         row.destination ?? "", row.tradeTerms ?? "", row.paymentMethod ?? "",
         row.shipmentMonth, row.lcTtDate, row.actualShipmentDate, row.expectedArrivalDate,
         row.contractNo ?? "", row.invoiceNo ?? "", row.status ?? (row.actualShipmentDate ? "shipped" : "planned"),

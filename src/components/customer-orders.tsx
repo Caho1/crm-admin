@@ -224,6 +224,8 @@ export function CustomerOrders({
     { title: t("单价"), dataIndex: "price", width: 115, align: "right", render: (value, row) => <span className={resStyles.money}>{formatNumber(value)} {String(row.currency || "")}</span> },
     { title: t("订单性质"), dataIndex: "orderNature", width: 110, render: (value) => value ? <Tag>{dictLabelOf(orderNatures, String(value), locale)}</Tag> : <span className={resStyles.muted}>-</span> },
     { title: t("生产基地"), dataIndex: "productionBase", width: 100, render: (value) => value ? <Tag>{dictLabelOf(productionBases, String(value), locale)}</Tag> : <span className={resStyles.muted}>-</span> },
+    // 跟进人是表里 P.I.C 那一列的名字，跟系统账号无关，所以只显示文本
+    { title: t("跟进人"), dataIndex: "pic", width: 90, render: (value) => value || <span className={resStyles.muted}>-</span> },
     { title: t("目的地"), dataIndex: "destination", width: 120, ellipsis: true, render: (value) => value || <span className={resStyles.muted}>-</span> },
     { title: t("贸易条款"), dataIndex: "tradeTerms", width: 100, render: (value) => value || <span className={resStyles.muted}>-</span> },
     { title: t("付款方式"), dataIndex: "paymentMethod", width: 110, render: (value) => value || <span className={resStyles.muted}>-</span> },
@@ -440,6 +442,9 @@ export function CustomerOrders({
             <Form.Item name="productionBase" label={t("生产基地")}>
               <Select allowClear showSearch optionFilterProp="label" placeholder={t("请选择{label}", { label: t("生产基地") })} options={productionBases.map((item) => ({ value: item.code, label: dictLabel(item, locale) }))} />
             </Form.Item>
+            <Form.Item name="pic" label={t("跟进人")}>
+              <Input maxLength={60} placeholder={t("表格里 P.I.C 那一列，填名字即可")} />
+            </Form.Item>
             {isAdmin ? (
               <Form.Item name="ownerId" label={t("负责人")}>
                 <Select showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: item.name }))} />
@@ -484,6 +489,7 @@ export function CustomerOrders({
               <Descriptions.Item label={t("金额")}>{`${formatNumber(detail.amount)} ${detail.currency || ""}`}</Descriptions.Item>
               <Descriptions.Item label={t("订单性质")}>{detail.orderNature ? dictLabelOf(orderNatures, String(detail.orderNature), locale) : "-"}</Descriptions.Item>
               <Descriptions.Item label={t("生产基地")}>{detail.productionBase ? dictLabelOf(productionBases, String(detail.productionBase), locale) : "-"}</Descriptions.Item>
+              <Descriptions.Item label={t("跟进人")}>{text(detail, "pic")}</Descriptions.Item>
               <Descriptions.Item label={t("负责人")}>{text(detail, "ownerName")}</Descriptions.Item>
               <Descriptions.Item label={t("目的地")}>{text(detail, "destination")}</Descriptions.Item>
               <Descriptions.Item label={t("贸易条款")}>{text(detail, "tradeTerms")}</Descriptions.Item>

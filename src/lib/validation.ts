@@ -133,6 +133,8 @@ export const orderSchema = z.object({
   currency: z.string().trim().min(3).max(8).default("USD"),
   orderNature: optionalText(60),
   productionBase: optionalText(60),
+  // 跟进人只是个名字，不是系统用户；订单负责人仍走 ownerId
+  pic: optionalText(60),
   destination: optionalText(120),
   tradeTerms: optionalText(80),
   paymentMethod: optionalText(80),

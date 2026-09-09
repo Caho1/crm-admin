@@ -321,10 +321,10 @@ function buildPreviewPayload(parsed: ParsedOrders) {
 }
 
 /**
- * 把 P.I.C 回填成客户的跟进人。跟进人写在订单行上，但业务上一个客户基本固定一个人跟，
- * 所以客户档案上也留一份。一个客户在这批数据里出现多个 P.I.C 时（大客户按产品线分给
- * 几个人），取单数最多的那个当主跟进人——逐单是谁跟的，订单自己那一列还留着。
- * 只填客户跟进人为空的，系统里手工改过的不覆盖。
+ * 把 P.I.C 回填成客户的跟进人。跟进人写在订单行上，但业务上一个客户基本固定一两个人跟，
+ * 所以客户档案上也留两个位置。一个客户在这批数据里出现多个 P.I.C 时（大客户按产品线分给
+ * 几个人），按单数排序取前两位；超过两个人的，逐单是谁跟的看订单自己那一列。
+ * 只在客户跟进人 1 为空时才填（两个位置一起填），系统里手工改过的整个跳过。
  */
 function fillCustomerPic(db: Database.Database, validRows: ImportedOrder[]) {
   const tally = new Map<number, Map<string, number>>();
@@ -335,11 +335,11 @@ function fillCustomerPic(db: Database.Database, validRows: ImportedOrder[]) {
     tally.set(row.customerId, counts);
   }
   const update = db.prepare(
-    "UPDATE customers SET pic = ?, updated_at = datetime('now') WHERE id = ? AND pic = ''",
+    "UPDATE customers SET pic = ?, pic2 = ?, updated_at = datetime('now') WHERE id = ? AND pic = ''",
   );
   for (const [customerId, counts] of tally) {
-    const [top] = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-    if (top) update.run(top[0].slice(0, 60), customerId);
+    const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name.slice(0, 60));
+    if (ranked.length) update.run(ranked[0], ranked[1] ?? "", customerId);
   }
 }
 

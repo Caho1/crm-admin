@@ -159,7 +159,8 @@ export function buildCustomerFields(t: TFn): Field[] {
     { name: "status", label: t("客户状态"), type: "select", required: true, options: customerStatusOptions(t) },
     // 行业按客户实际说法手填，不走标签配置：口径太细，穷举成下拉反而卡住录入
     { name: "industry", label: t("行业"), type: "input", placeholder: t("如 注塑加工、家电制造") },
-    { name: "pic", label: t("跟进人"), type: "input", placeholder: t("表格里 P.I.C 那一列，填名字即可") },
+    { name: "pic", label: t("跟进人 1"), type: "input", placeholder: t("表格里 P.I.C 那一列，填名字即可") },
+    { name: "pic2", label: t("跟进人 2"), type: "input", placeholder: t("这个客户由两个人一起跟时填第二位") },
     { name: "ownerId", label: t("负责人"), type: "select", source: "users", adminOnly: true },
     { name: "country", label: t("国家"), type: "input" },
     { name: "region", label: t("地区"), type: "input" },

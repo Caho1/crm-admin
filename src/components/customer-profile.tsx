@@ -10,6 +10,7 @@ import { dictLabelOf, type DictMap } from "@/lib/dicts";
 import { CustomerEditModal } from "./customer-form";
 import { CustomerOrders, STATUS_FLOW } from "./customer-orders";
 import { CustomerVisits } from "./customer-visits";
+import { picText } from "./resource-page";
 import { useLocale } from "./providers";
 import { useCurrentUser } from "./user-context";
 import { StatusTag, statusLabel } from "./status-tag";
@@ -274,6 +275,7 @@ export function CustomerProfile({ id }: { id: number }) {
 
   const { customer } = data;
   const location = [customer.country, customer.region].filter(Boolean).join(" / ");
+  const picList = picText(customer);
   const categoryLabel = dictLabelOf(dicts.customer_category, String(customer.category || ""), locale);
   const industryLabel = String(customer.industry || "");
   const orderStatusCounts = data.orderStatusCounts || {};
@@ -296,7 +298,7 @@ export function CustomerProfile({ id }: { id: number }) {
           <div className={styles.headerMeta}>
             <span><b>{t("客户编号")}</b> {id}</span>
             {customer.shortName ? <span><b>{t("简称")}</b> {customer.shortName}</span> : null}
-            {customer.pic ? <span><b>{t("跟进人")}</b> {String(customer.pic)}</span> : null}
+            {picList ? <span><b>{t("跟进人")}</b> {picList}</span> : null}
             <span><b>{t("负责人")}</b> {customer.ownerName}</span>
             {location ? <span><b>{t("国家 / 地区")}</b> {location}</span> : null}
             {industryLabel ? <span><b>{t("行业")}</b> {industryLabel}</span> : null}

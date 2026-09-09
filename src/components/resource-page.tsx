@@ -48,6 +48,12 @@ import { StatusTag } from "./status-tag";
 import styles from "./resource-page.module.css";
 
 export type ResourceKind = "customers" | "products";
+
+/** 客户的两位跟进人合成一串显示：只有一位时就显示一位 */
+export function picText(record: Record<string, unknown>) {
+  return [record.pic, record.pic2].map((value) => String(value ?? "").trim()).filter(Boolean).join("、");
+}
+
 type RowData = Record<string, unknown> & { id: number; canEdit?: number };
 type Column = {
   title: string;
@@ -55,7 +61,7 @@ type Column = {
   key?: string;
   width?: number;
   ellipsis?: boolean;
-  kind?: "primary" | "status" | "product" | "money" | "date" | "number" | "dict" | "competitors";
+  kind?: "primary" | "status" | "product" | "money" | "date" | "number" | "dict" | "competitors" | "pic";
   dictType?: DictType;
   classField?: string;
   currencyField?: string;
@@ -108,8 +114,9 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
         { title: t("客户分类"), dataIndex: "category", width: 110, kind: "dict", dictType: "customer_category" },
         { title: t("国家 / 地区"), key: "location", width: 130 },
         { title: t("行业"), dataIndex: "industry", width: 110, ellipsis: true },
-        // 跟进人是表里 P.I.C 那一列的名字，跟系统账号无关；负责人才是系统用户
-        { title: t("跟进人"), dataIndex: "pic", width: 100, ellipsis: true },
+        // 跟进人是表里 P.I.C 那一列的名字，跟系统账号无关；负责人才是系统用户。
+        // 两位跟进人合成一列显示，避免第二列大部分是空的
+        { title: t("跟进人"), key: "pic", width: 130, ellipsis: true, kind: "pic" },
         { title: t("负责人"), dataIndex: "ownerName", width: 110, ellipsis: true },
         { title: t("协作人"), dataIndex: "memberNames", width: 110, ellipsis: true },
         { title: t("最近拜访"), dataIndex: "latestVisitDate", width: 110, kind: "date" },
@@ -364,6 +371,10 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
       // 首列为主键列时固定在左侧，横向滚动时不丢失行上下文
       fixed: index === 0 && column.kind === "primary" ? ("left" as const) : undefined,
       render: (value: unknown, record: RowData) => {
+        if (column.kind === "pic") {
+          const text = picText(record);
+          return text || <span className={styles.muted}>-</span>;
+        }
         if (column.key === "location") {
           const location = [record.country, record.region].filter(Boolean).join(" / ");
           return location || <span className={styles.muted}>-</span>;
@@ -522,7 +533,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
                 <dl className={styles.cardMeta}>
                   <div><dt>{t("客户编号")}</dt><dd>{record.id as number}</dd></div>
                   <div><dt>{t("国家 / 地区")}</dt><dd>{location || "-"}</dd></div>
-                  <div><dt>{t("跟进人")}</dt><dd>{String(record.pic || "-")}</dd></div>
+                  <div><dt>{t("跟进人")}</dt><dd>{picText(record) || "-"}</dd></div>
                   <div><dt>{t("负责人")}</dt><dd>{String(record.ownerName || "-")}</dd></div>
                   <div><dt>{t("最近拜访")}</dt><dd>{String(record.latestVisitDate || "-")}</dd></div>
                   <div><dt>{t("订单")}</dt><dd>{formatNumber(record.orderCount)}</dd></div>

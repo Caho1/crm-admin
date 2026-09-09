@@ -84,9 +84,13 @@
 }
 
 .previewFrame {
+  display: block;
   width: 100%;
-  height: 70vh;
+  /* PDF 用浏览器自带阅读器渲染，给足高度，否则内容被压得很小 */
+  height: 76vh;
   border: none;
+  border-radius: 6px;
+  background: #f2f4f7;
 }
 
 .previewFallback {
@@ -94,4 +98,91 @@
   color: #98a2b3;
   font-size: 13px;
   text-align: center;
+}
+
+/* ---- Excel 预览：工作表切换 + 表格 ---- */
+.sheetWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sheetTabs {
+  display: flex;
+  overflow-x: auto;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sheetTab {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: #475467;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sheetTab:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.sheetTabActive {
+  border-color: var(--primary);
+  background: #eaf3fb;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.sheetScroll {
+  overflow: auto;
+  max-height: 62vh;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.sheetTable {
+  border-collapse: collapse;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.sheetTable td,
+.sheetTable th {
+  overflow: hidden;
+  max-width: 260px;
+  padding: 6px 10px;
+  border-right: 1px solid #eef2f7;
+  border-bottom: 1px solid #eef2f7;
+  text-overflow: ellipsis;
+}
+
+/* 第一行按表头处理：加粗 + 浅底，滚动时钉在顶部 */
+.sheetTable tr:first-child td {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f7f9fc;
+  font-weight: 650;
+}
+
+/* 左侧行号列，跟 Excel 一样钉在左边 */
+.rowHead {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 40px;
+  background: #f7f9fc;
+  color: #98a2b3;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.sheetMeta {
+  color: #98a2b3;
+  font-size: 12px;
 }

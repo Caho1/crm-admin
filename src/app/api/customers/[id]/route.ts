@@ -20,7 +20,7 @@ export async function GET(_request: Request, context: Context) {
     const customer = db.prepare(`
       SELECT c.id, c.name, c.name_en AS nameEn, c.short_name AS shortName, c.category, c.country, c.region,
         c.industry, c.address, c.description,
-        c.owner_id AS ownerId, owner.name AS ownerName, c.pic, c.status,
+        c.owner_id AS ownerId, owner.name AS ownerName, c.pic, c.pic2, c.status,
         c.created_at AS createdAt, c.updated_at AS updatedAt
       FROM customers c JOIN users owner ON owner.id = c.owner_id
       WHERE c.id = ? AND c.deleted_at IS NULL
@@ -74,9 +74,9 @@ export async function PUT(request: Request, context: Context) {
     db.transaction(() => {
       db.prepare(`
         UPDATE customers SET name = ?, name_en = ?, short_name = ?, category = ?, country = ?, region = ?,
-          industry = ?, pic = ?, address = ?, description = ?, owner_id = ?, status = ?,
+          industry = ?, pic = ?, pic2 = ?, address = ?, description = ?, owner_id = ?, status = ?,
           updated_at = datetime('now') WHERE id = ?
-      `).run(input.name, input.nameEn, input.shortName, input.category, input.country, input.region, input.industry, input.pic, input.address, input.description, ownerId, input.status, id);
+      `).run(input.name, input.nameEn, input.shortName, input.category, input.country, input.region, input.industry, input.pic, input.pic2, input.address, input.description, ownerId, input.status, id);
       if (user.role === "admin") {
         // 保留已有成员的 access 等级，避免 edit 权限被重置成 view
         const existing = db.prepare("SELECT user_id AS userId, access FROM customer_members WHERE customer_id = ?").all(id) as Array<{ userId: number; access: string }>;

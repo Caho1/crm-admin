@@ -76,6 +76,7 @@ node_modules/better-sqlite3/build/Release/better_sqlite3.node
 - **不要用 `npm rebuild <pkg>` 来验证/修复一个已经工作的原生模块**：`npm rebuild` 会先清空已有的编译产物再重新编译，如果当时环境缺编译器，会把一个原本能跑的二进制直接删掉且rebuild失败，把好的状态搞坏。想验证一个原生模块能不能用，用 `node -e "require(...)"` 直接测，不要用 `npm rebuild` 当探测手段。
 - **`npm install` 前先去掉不需要的重量级 devDependencies**：如果 `package.json` 里混了只有打包桌面端才用的 `electron` 系列依赖，服务器部署用不上，安装前可以先在临时副本的 `package.json` 里删掉这几行再 `npm install`，省内存也省时间。
 - **数据库文件必须放在部署目录之外，或者部署时明确跳过**：每次更新代码是「删掉旧的 server.js / .next / node_modules，换上新的」，`data/*.db` 这份运行时数据绝对不能被这个流程覆盖或删除。用 pm2 的话，`DATABASE_URL` 环境变量指向一个固定的绝对路径，不要用相对路径，这样不管代码目录怎么换，数据库文件的位置都不变。
+- **macOS 打的 tar 包会带 `._*` 伴生文件**：Mac 上 `tar` 会把扩展属性写成同名的 `._xxx` 文件，解压到 Linux 上时还会刷一堆 `Ignoring unknown extended header keyword 'LIBARCHIVE.xattr...'` 警告。这些文件不影响运行，但会留在部署目录里，解压后顺手清掉：`find <部署目录> -maxdepth 1 -name '._*' -delete`（想从源头避免可以打包时加 `COPYFILE_DISABLE=1`）。
 - **上线前先备份旧的产物再覆盖**：`server.js` / `.next` / `node_modules` / `public` 覆盖前整体复制一份带日期后缀的备份目录，出问题能立刻切回去。
 - **仓库公开时绝不能提交真实业务数据**：`.gitignore` 里已经排除了 `.env*`（除 `.env.example`）、`/data/*.db`、`*.xlsx`/`*.xls`。往公开仓库推代码前，`git status` 确认这些没有被意外 `git add`。
 

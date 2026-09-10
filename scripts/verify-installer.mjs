@@ -12,12 +12,29 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const manifestPath = path.resolve(root, process.argv[2] || "release/latest.yml");
+const target = path.resolve(root, process.argv[2] || "release/latest.yml");
 
-if (!existsSync(manifestPath)) {
-  console.error(`[verify-installer] 找不到 ${path.relative(root, manifestPath)}，请先执行打包`);
+if (!existsSync(target)) {
+  console.error(`[verify-installer] 找不到 ${path.relative(root, target)}，请先执行打包`);
   process.exit(1);
 }
+
+/**
+ * portable 目标不生成 latest.yml（那是自动更新用的清单），
+ * 直接传 exe 路径进来时就只算校验和 —— 没有清单可比，但传输是否完整仍然能核。
+ */
+if (target.toLowerCase().endsWith(".exe")) {
+  const size = statSync(target).size;
+  const sha256 = await digestFile(target, "sha256", "hex");
+  const name = path.basename(target);
+  console.log(`[verify-installer] ✓ ${name}（${(size / 1024 / 1024).toFixed(1)} MB）`);
+  console.log(`                   SHA256 ${sha256}`);
+  console.log(`                   传到 Windows 后先在该机器上核对，一致再运行：`);
+  console.log(`                   certutil -hashfile "${name}" SHA256`);
+  process.exit(0);
+}
+
+const manifestPath = target;
 
 /** latest.yml 只有固定几个字段，正则取出即可，不引第三方 YAML 解析 */
 function parseManifest(text) {
@@ -53,7 +70,7 @@ function resolveFile(dir, entry) {
   return bySize || null;
 }
 
-function digest(file, algorithm, encoding) {
+function digestFile(file, algorithm, encoding) {
   return new Promise((resolve, reject) => {
     const hash = createHash(algorithm);
     createReadStream(file)
@@ -85,13 +102,13 @@ for (const entry of entries) {
     failed = true;
     continue;
   }
-  const sha512 = await digest(file, "sha512", "base64");
+  const sha512 = await digestFile(file, "sha512", "base64");
   if (sha512 !== entry.sha512) {
     console.error(`[verify-installer] ✗ ${name} 校验和不符，产物已损坏，请重新打包`);
     failed = true;
     continue;
   }
-  const sha256 = await digest(file, "sha256", "hex");
+  const sha256 = await digestFile(file, "sha256", "hex");
   console.log(`[verify-installer] ✓ ${name}（${(size / 1024 / 1024).toFixed(1)} MB）本地校验通过`);
   console.log(`                   SHA256 ${sha256}`);
   console.log(`                   传到 Windows 后先在该机器上核对，一致再安装：`);

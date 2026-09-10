@@ -24,6 +24,11 @@ extraResources:
     to: standalone/node_modules
     filter:
       - "**/*"
+      # sharp / @img 是 Next 的图片优化依赖，16MB 且是本机 macOS 的二进制，
+      # 放进 Windows 包里既没用也加载不了。全项目没有用到 next/image，直接排除。
+      # （以后真要用 next/image，把这两行去掉，并改用目标平台的 sharp 二进制）
+      - "!@img/**"
+      - "!sharp/**"
   # 静态资源：Next standalone 输出不包含 .next/static 与 public，需手动补齐
   - from: .next/static
     to: standalone/.next/static
@@ -38,6 +43,10 @@ extraResources:
 # 关闭 electron-builder 自带的 npmRebuild，避免重复编译
 npmRebuild: false
 
+# 打包体积：最高压缩档 + 打包后裁掉用不到的 Chromium 大件（多余语言包、WebGPU 编译器）
+compression: maximum
+afterPack: scripts/prune-electron-dist.mjs
+
 mac:
   # 无开发者证书，跳过签名（应用分发前需补签名与公证）
   identity: null
@@ -48,7 +57,17 @@ mac:
 
 win:
   target:
-    - nsis
+    # portable：单个 exe，双击即用，不走安装程序
+    - target: portable
+      arch:
+        - x64
+  requestedExecutionLevel: asInvoker
+
+portable:
+  artifactName: ${productName}-${version}-portable-x64.exe
+  # 固定解压目录名：portable 包每次启动会把自己解到 %TEMP%，
+  # 给个稳定的名字，第二次启动就能直接复用，不用重新解压
+  unpackDirName: CRM-Admin-${version}
 
 linux:
   target:

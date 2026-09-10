@@ -9,12 +9,14 @@ import path from "node:path";
 const KEEP_LOCALES = new Set(["zh-CN.pak", "en-US.pak", "ko.pak"]);
 
 /**
- * 明确删掉的文件：
- * - dxcompiler.dll / dxil.dll：DirectX 着色器编译器，只有 WebGPU 才会加载。
- *   本应用的图表走 AntV G2 的 canvas 2D，不碰 WebGPU。
- *   （万一目标机器上图形显示异常，把这两行删掉重新打包即可）
+ * 明确删掉的文件。目前留空 —— 保守起见不动图形相关的动态库。
+ *
+ * 曾经删过 dxcompiler.dll / dxil.dll（DirectX 着色器编译器，共约 25MB，
+ * 理论上只有 WebGPU 会加载，而本应用的图表走 AntV G2 的 canvas 2D）。
+ * 但这台 Mac 上没法实际验证 Windows 的渲染表现，省下的体积也就 8MB 左右，
+ * 不值得拿目标机器上「图表画不出来」的风险去换，所以保留。
  */
-const DROP_FILES = ["dxcompiler.dll", "dxil.dll"];
+const DROP_FILES = [];
 
 function sizeOf(target) {
   if (!existsSync(target)) return 0;

@@ -1,7 +1,7 @@
 "use client";
 
 import { DownloadOutlined, FileExcelOutlined, InboxOutlined, TableOutlined, UploadOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Checkbox, Empty, Modal, Table, Tag, Upload, type TableProps, type UploadFile } from "antd";
+import { Alert, App, Button, Empty, Modal, Table, Tag, Upload, type TableProps, type UploadFile } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { useLocale } from "./providers";
@@ -49,8 +49,6 @@ type PanelConfig = {
   exportLabel?: string;
   uploadText: string;
   hint: string;
-  /** 只有订单导入支持「缺客户/产品就顺手新建」 */
-  allowMissingCreate?: boolean;
   /** 标红提示语里那个「重复」指的是什么重复——客户导入是客户名称，订单导入是订单编号 */
   duplicateLabel: string;
 };
@@ -62,38 +60,17 @@ function ImportPanel({ config }: { config: PanelConfig }) {
   const [checking, setChecking] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
-  // 缺失的客户/产品要不要一起新建，默认要
-  const [createMissing, setCreateMissing] = useState(true);
   // 预检表格里勾选要导入的 Excel 行号，默认全选
   const [selectedRows, setSelectedRows] = useState<number[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  useEffect(() => {
-    setCreateMissing(true);
-  }, [result?.missingCustomers, result?.missingProducts]);
-
-  // 一行能不能导：没问题的行随时能导；只差客户/产品的行，勾上「一起新建」之后也能导
-  const canImportRow = useCallback(
-    (row: PreviewRow) => !row.error || (createMissing && row.fixableByCreate),
-    [createMissing],
-  );
+  // 一行能不能导：表里的客户/产品系统中还没有时一律自动新建，
+  // 所以「只差客户/产品」不算问题，只有真正的数据错误（日期、数量等）才导不了
+  const canImportRow = useCallback((row: PreviewRow) => !row.error || row.fixableByCreate, []);
 
   useEffect(() => {
     setSelectedRows((result?.preview ?? []).filter((row) => !row.error || row.fixableByCreate).map((row) => row.row));
   }, [result?.preview]);
-
-  // 「一起新建」开关切换时，靠它才可导的那些行跟着一起取消 / 恢复勾选，
-  // 用户手动勾掉的其它行不受影响
-  useEffect(() => {
-    const rows = result?.preview ?? [];
-    if (createMissing) {
-      const fixable = rows.filter((row) => row.fixableByCreate).map((row) => row.row);
-      setSelectedRows((prev) => [...new Set([...prev, ...fixable])]);
-      return;
-    }
-    const importable = new Set(rows.filter((row) => !row.error).map((row) => row.row));
-    setSelectedRows((prev) => prev.filter((row) => importable.has(row)));
-  }, [createMissing, result?.preview]);
 
   const upload = async (commit: boolean) => {
     const file = fileList[0]?.originFileObj;
@@ -107,7 +84,9 @@ function ImportPanel({ config }: { config: PanelConfig }) {
       const form = new FormData();
       form.append("file", file);
       form.append("commit", String(commit));
-      if (commit && createMissing) {
+      // 表里的客户/产品系统中还没有就直接建 —— 导一张月度订单表，本来就意味着
+      // 要把里面的客户和牌号建进系统，没必要再让用户确认一次
+      if (commit) {
         if (result?.missingCustomers?.length) form.append("createCustomers", JSON.stringify(result.missingCustomers));
         if (result?.missingProducts?.length) form.append("createProducts", JSON.stringify(result.missingProducts));
       }
@@ -139,8 +118,14 @@ function ImportPanel({ config }: { config: PanelConfig }) {
   };
 
   const done = result?.imported !== undefined;
-  const duplicateCount = (result?.preview ?? []).filter((row) => row.duplicate).length;
-  const missingTotal = (result?.missingCustomers?.length ?? 0) + (result?.missingProducts?.length ?? 0);
+  const previewRows = result?.preview ?? [];
+  const duplicateCount = previewRows.filter((row) => row.duplicate).length;
+  const missingCustomerCount = result?.missingCustomers?.length ?? 0;
+  const missingProductCount = result?.missingProducts?.length ?? 0;
+  // 可导入行数按前端口径重算：缺客户/产品会自动新建，这类行不算错误，
+  // 而接口返回的 validCount 是「当前库里已经能对上」的行数，会把它们算成不可导入
+  const importableCount = previewRows.filter((row) => !row.error || row.fixableByCreate).length;
+  const blockedCount = previewRows.length - importableCount;
   // 表格列 = 固定的「行号 / 处理方式 / 问题」+ 上传文件自己的每一列，原样展示
   const previewColumns: TableProps<PreviewRow>["columns"] = [
     { title: t("行号"), dataIndex: "row", width: 76, fixed: "left", render: (value: number) => t("第 {row} 行", { row: value }) },
@@ -166,9 +151,10 @@ function ImportPanel({ config }: { config: PanelConfig }) {
       width: 220,
       render: (value: string | null, record) => {
         if (!value) return <span className={styles.muted}>-</span>;
-        // 只差客户/产品且已勾选一起新建时，这不算错误，导入时会顺手建好
-        const soft = createMissing && record.fixableByCreate;
-        return <span className={soft ? styles.softText : styles.errorText}>{soft ? t("将随导入一起新建") : value}</span>;
+        // 只差客户/产品不算错误，导入时会顺手建好
+        return record.fixableByCreate
+          ? <span className={styles.softText}>{t("将随导入一起新建")}</span>
+          : <span className={styles.errorText}>{value}</span>;
       },
     },
   ];
@@ -212,13 +198,15 @@ function ImportPanel({ config }: { config: PanelConfig }) {
             {/* 导入完成后只留一条结果提示，不再把同样的数字用标签重复一遍 */}
             {!done ? (
               <div className={styles.resultSummary}>
-                <Tag color={result.valid ? "green" : "red"}>{result.valid ? t("预检通过") : t("存在错误")}</Tag>
-                {result.totalRows !== undefined ? <span>{t("共 {total} 行，可导入 {valid} 行", { total: result.totalRows, valid: result.validCount ?? 0 })}</span> : null}
+                <Tag color={blockedCount ? "red" : "green"}>{blockedCount ? t("存在错误") : t("预检通过")}</Tag>
+                <span>{t("共 {total} 行，可导入 {valid} 行", { total: previewRows.length, valid: importableCount })}</span>
+                {missingCustomerCount || missingProductCount ? (
+                  <span className={styles.missingHint}>
+                    {t("将新建 {customers} 个客户、{products} 个产品", { customers: missingCustomerCount, products: missingProductCount })}
+                  </span>
+                ) : null}
                 {duplicateCount ? (
                   <Tag color="red">{t("{label}重复 {n} 行", { label: config.duplicateLabel, n: duplicateCount })}</Tag>
-                ) : null}
-                {result.preview?.length ? (
-                  <span className={styles.selectedHint}>{t("已勾选 {n} 行导入", { n: selectedRows.length })}</span>
                 ) : null}
               </div>
             ) : null}
@@ -266,24 +254,13 @@ function ImportPanel({ config }: { config: PanelConfig }) {
             <Tag color="red">{t("{label}重复 {n} 行", { label: config.duplicateLabel, n: duplicateCount })}</Tag>
           ) : null}
           <span className={styles.selectedHint}>{t("已勾选 {n} 行导入", { n: selectedRows.length })}</span>
+          {/* 表里的客户/产品系统中没有就直接建，不再让用户确认 —— 这里只把会建多少告诉他 */}
+          {missingCustomerCount || missingProductCount ? (
+            <span className={styles.missingHint}>
+              {t("将新建 {customers} 个客户、{products} 个产品", { customers: missingCustomerCount, products: missingProductCount })}
+            </span>
+          ) : null}
         </div>
-        {/* 缺客户/产品时给一个开关就够了，不用把几十个名字全铺出来——具体哪几行缺什么，表格「问题」列里逐行写着 */}
-        {config.allowMissingCreate && missingTotal ? (
-          <Alert
-            className={styles.missingAlert}
-            type="warning"
-            showIcon
-            title={
-              <Checkbox checked={createMissing} onChange={(event) => setCreateMissing(event.target.checked)}>
-                {t("同时新建缺失的 {customers} 个客户、{products} 个产品", {
-                  customers: result?.missingCustomers?.length ?? 0,
-                  products: result?.missingProducts?.length ?? 0,
-                })}
-              </Checkbox>
-            }
-            description={<span className={styles.missingHint}>{t("不勾的话，涉及这些客户/产品的行导不进来")}</span>}
-          />
-        ) : null}
         <Table<PreviewRow>
           rowKey={(row) => String(row.row)}
           size="small"
@@ -294,7 +271,7 @@ function ImportPanel({ config }: { config: PanelConfig }) {
           rowSelection={{
             selectedRowKeys: selectedRows.map(String),
             onChange: (keys) => setSelectedRows(keys.map((key) => Number(key))),
-            // 导不进去的行禁掉勾选（只差客户/产品的行，勾上「一起新建」后就放开）
+            // 只有真正有数据错误的行禁掉勾选；只差客户/产品的行会自动新建，可以导
             getCheckboxProps: (row) => ({ disabled: !canImportRow(row) }),
           }}
           pagination={{ pageSize: 10, showSizeChanger: false, showTotal: (total) => t("共 {n} 条", { n: total }) }}
@@ -318,7 +295,6 @@ export function DataCenter() {
     exportLabel: t("导出全部订单"),
     uploadText: t("选择或拖入订单记录表 Excel / CSV"),
     hint: t("支持 .xlsx / .csv，单个文件不超过 5MB；按行导入，表里的客户与产品如果系统中还没有，预检时可以一起新建"),
-    allowMissingCreate: true,
     duplicateLabel: t("订单编号"),
   };
 

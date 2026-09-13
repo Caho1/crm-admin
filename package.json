@@ -14,9 +14,8 @@
     "electron:rebuild": "electron-rebuild -f -w better-sqlite3",
     "electron:pack": "npm run build && electron-rebuild -f -w better-sqlite3 && node scripts/copy-sqlite-build.mjs && electron-builder && rm -rf node_modules/better-sqlite3/build && npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 ABI OK for dev')\"",
     "electron:pack:dir": "npm run build && electron-rebuild -f -w better-sqlite3 && node scripts/copy-sqlite-build.mjs && electron-builder --dir && rm -rf node_modules/better-sqlite3/build && npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 ABI OK for dev')\"",
-    "electron:pack:win": "npm run build && node scripts/fetch-sqlite-prebuild.mjs win32 x64 && node scripts/copy-sqlite-build.mjs && electron-builder --win nsis --x64 && node scripts/verify-installer.mjs && rm -rf node_modules/better-sqlite3/build && npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 ABI OK for dev')\"",
-    "verify:installer": "node scripts/verify-installer.mjs",
-    "electron:pack:win:portable": "npm run build && node scripts/fetch-sqlite-prebuild.mjs win32 x64 && node scripts/copy-sqlite-build.mjs && electron-builder --win portable --x64 && node scripts/restore-sqlite-dev.mjs"
+    "electron:pack:win": "node scripts/restore-sqlite-dev.mjs && npm run build && node scripts/fetch-sqlite-prebuild.mjs win32 x64 && node scripts/copy-sqlite-build.mjs && electron-builder --win portable zip --x64 && node scripts/restore-sqlite-dev.mjs",
+    "verify:installer": "node scripts/verify-installer.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",

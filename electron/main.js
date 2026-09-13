@@ -181,6 +181,9 @@ function startServer(databaseUrl, staleNote) {
       PORT: String(PORT),
       HOSTNAME: "127.0.0.1",
       DATABASE_URL: databaseUrl,
+      // 交付给客户的桌面版建空库：只有管理员账号和标签字典，
+      // 业务数据由用户自己导入月度订单表产生，不带任何演示数据
+      CRM_SEED_DEMO: "0",
       // 让子进程以 Node 身份运行 Electron 二进制
       ELECTRON_RUN_AS_NODE: "1",
     },

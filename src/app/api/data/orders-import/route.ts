@@ -374,6 +374,18 @@ function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: 
     ["status", "status"],
     ["notes", "notes"],
   ];
+  // 表里出现的产品大类要登记成标签字典项，否则「新建产品」的大类下拉框和列表筛选器里
+  // 没有这些选项（空库导入时尤其明显：字典里只有内置的几个默认值）。
+  // 表格显示本身会回落到原始 code，所以这一步只影响能不能选、能不能筛。
+  const insertClassDict = db.prepare(`
+    INSERT OR IGNORE INTO dict_items (type, code, label, label_en, label_ko, sort_order)
+    VALUES ('product_class', ?, ?, ?, ?, ?)
+  `);
+  const classNames = [...new Set(validRows.map((row) => row.className).filter(Boolean))];
+  for (const [index, className] of classNames.entries()) {
+    insertClassDict.run(className, className, className, className, 100 + index);
+  }
+
   // 用途写在订单行上，实际是牌号的属性：产品还没填用途时补上，已经填了的不覆盖
   // （系统里手工改过的口径优先于表格里 VLOOKUP 出来的值）
   const fillApplication = db.prepare(

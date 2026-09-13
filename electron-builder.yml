@@ -57,17 +57,23 @@ mac:
 
 win:
   target:
-    # portable：单个 exe，双击即用，不走安装程序
+    # portable：单个 exe，双击即用，不走安装程序。代价是每次启动都要把
+    # 自己解压到 %TEMP%，首次启动慢几秒，且解压过程会被杀毒软件盯上
     - target: portable
+      arch:
+        - x64
+    # zip：解压一次、直接点 exe 跑，没有自解压环节。
+    # 同样不需要安装程序，但比 portable 稳 —— 出问题时优先用这个
+    - target: zip
       arch:
         - x64
   requestedExecutionLevel: asInvoker
 
 portable:
   artifactName: ${productName}-${version}-portable-x64.exe
-  # 固定解压目录名：portable 包每次启动会把自己解到 %TEMP%，
-  # 给个稳定的名字，第二次启动就能直接复用，不用重新解压
-  unpackDirName: CRM-Admin-${version}
+  # 不要固定 unpackDirName：固定之后 portable 会复用 %TEMP% 里的旧目录，
+  # 万一首次解压被杀毒软件 / 磁盘空间打断，之后每次启动都在用那份残缺的副本，
+  # 表现就是服务起来了但请求 500。让它每次干净解压，牺牲几秒换确定性
 
 linux:
   target:

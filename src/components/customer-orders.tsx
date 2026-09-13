@@ -200,9 +200,12 @@ export function CustomerOrders({
   // 客户档案页只留关键列（字段太多会挤爆表格），完整字段在子页与详情抽屉里看
   const compactColumns: TableProps<OrderRow>["columns"] = [
     {
+      // 编号是自增数字（如 54），列宽按表头「订单编号」四个字的实际渲染宽度定。
+      // ellipsis 是给手工指定的长编号兜底：否则 SO-20260803-D083 这种会折成三行、把行高撑高
       title: t("订单编号"),
       dataIndex: "orderNo",
-      width: 155,
+      width: 100,
+      ellipsis: true,
       render: (value, row) => <span className={resStyles.primaryCell} onClick={() => setDetail(row)}>{String(value || "-")}</span>,
     },
     { title: t("下单日期"), dataIndex: "orderDate", width: 110, render: (value) => <span className={resStyles.nowrap}>{String(value || "-")}</span> },
@@ -214,6 +217,8 @@ export function CustomerOrders({
         ? <span className={resStyles.product}><span className={resStyles.productClass}>{String(row.className)}</span>{String(row.grade)}</span>
         : <span className={resStyles.muted}>-</span>),
     },
+    // 订单性质（成熟 / 开发中）是判断这单要不要盯的关键信息，客户档案页也要看得到
+    { title: t("订单性质"), dataIndex: "orderNature", width: 125, render: (value) => value ? <Tag>{dictLabelOf(orderNatures, String(value), locale)}</Tag> : <span className={resStyles.muted}>-</span> },
     { title: t("数量"), dataIndex: "quantity", width: 80, align: "right", render: (value) => <span className={resStyles.money}>{formatNumber(value)}</span> },
     { title: t("金额"), dataIndex: "amount", width: 130, align: "right", render: (value, row) => <span className={resStyles.money}>{formatNumber(value)} {String(row.currency || "")}</span> },
     { title: t("状态"), dataIndex: "status", width: 92, render: (value) => <StatusTag value={String(value)} /> },
@@ -222,7 +227,6 @@ export function CustomerOrders({
   const fullColumns: TableProps<OrderRow>["columns"] = [
     ...compactColumns,
     { title: t("单价"), dataIndex: "price", width: 115, align: "right", render: (value, row) => <span className={resStyles.money}>{formatNumber(value)} {String(row.currency || "")}</span> },
-    { title: t("订单性质"), dataIndex: "orderNature", width: 110, render: (value) => value ? <Tag>{dictLabelOf(orderNatures, String(value), locale)}</Tag> : <span className={resStyles.muted}>-</span> },
     { title: t("生产基地"), dataIndex: "productionBase", width: 100, render: (value) => value ? <Tag>{dictLabelOf(productionBases, String(value), locale)}</Tag> : <span className={resStyles.muted}>-</span> },
     // 跟进人是表里 P.I.C 那一列的名字，跟系统账号无关，所以只显示文本
     { title: t("跟进人"), dataIndex: "pic", width: 100, ellipsis: true, render: (value) => value || <span className={resStyles.muted}>-</span> },

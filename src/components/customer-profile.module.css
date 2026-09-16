@@ -217,6 +217,22 @@
   margin-bottom: 14px;
 }
 
+/* 订单管理页：概要跟搜索 / 筛选同一行，靠右贴齐，把那片空白用起来。
+   同行里控件只有 32px 高，概要芯片相应收窄一档，免得整行被撑高 */
+.summaryInline {
+  margin-left: auto;
+  margin-bottom: 0;
+  gap: 8px;
+}
+
+.summaryInline .summaryChip {
+  padding: 4px 12px;
+}
+
+.summaryInline .summaryNum {
+  font-size: 16px;
+}
+
 .summaryChip {
   display: flex;
   align-items: baseline;

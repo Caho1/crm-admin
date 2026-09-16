@@ -307,6 +307,19 @@ export function CustomerOrders({
     { label: t("已取消"), value: "cancelled" },
   ];
 
+  // 状态概要：订单管理页贴在筛选行右侧的空白处（和客户档案页头把概要放右边一致），
+  // 客户订单子页没有筛选行，仍旧单独占一行；compact 嵌入时页头已有概要，不重复出
+  const summaryBlock = !compact && total > 0 ? (
+    <div className={isGlobal ? `${styles.summary} ${styles.summaryInline}` : styles.summary}>
+      {STATUS_FLOW.map((status) => (
+        <div key={status} className={styles.summaryChip}>
+          <span className={styles.summaryNum}>{statusCounts[status] || 0}</span>
+          <span className={styles.summaryLabel}>{t(statusLabel(status))}</span>
+        </div>
+      ))}
+    </div>
+  ) : null;
+
   return (
     <section className={styles.section}>
       <div className={styles.sectionHead}>
@@ -354,20 +367,11 @@ export function CustomerOrders({
           {currencyFilter ? (
             <Tag closable onClose={() => { setCurrencyFilter(""); setPage(1); }}>{t("币种")}：{currencyFilter}</Tag>
           ) : null}
+          {summaryBlock}
         </div>
       ) : null}
 
-      {/* compact（客户档案页嵌入）时概要已挪到页头，这里不再重复展示 */}
-      {!compact && total > 0 ? (
-        <div className={styles.summary}>
-          {STATUS_FLOW.map((status) => (
-            <div key={status} className={styles.summaryChip}>
-              <span className={styles.summaryNum}>{statusCounts[status] || 0}</span>
-              <span className={styles.summaryLabel}>{t(statusLabel(status))}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      {!isGlobal ? summaryBlock : null}
 
       <div className={styles.tableFrame}>
         <Table<OrderRow>

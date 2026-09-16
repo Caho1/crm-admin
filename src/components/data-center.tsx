@@ -246,7 +246,7 @@ function ImportPanel({ config }: { config: PanelConfig }) {
         cancelText={t("取消")}
         okButtonProps={{ loading: importing, disabled: !selectedRows.length }}
         onOk={() => void upload(true).then(() => setPreviewOpen(false))}
-        styles={{ body: { maxHeight: "calc(100vh - 260px)", overflowY: "auto" } }}
+        styles={{ body: { maxHeight: "calc(100vh - 260px)", overflowY: "scroll" } }}
       >
         <div className={styles.modalSummary}>
           <span>{t("共 {n} 行", { n: result?.preview?.length ?? 0 })}</span>

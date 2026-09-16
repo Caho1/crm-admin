@@ -262,7 +262,7 @@ export function CustomerVisits({
         onOk={() => void submit()}
         onCancel={() => setModalOpen(false)}
         destroyOnHidden
-        styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "auto", paddingRight: 4 } }}
+        styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "scroll", paddingRight: 4 } }}
       >
         {/* destroyOnHidden 保证每次打开重新挂载，initialValues 在首帧即生效，避免先空后填的闪烁 */}
         <Form

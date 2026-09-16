@@ -155,14 +155,26 @@ export function ContactsField({ name, label }: { name: string; label: string }) 
     <Form.List name={name}>
       {(fields, { add, remove }) => (
         <div className={styles.list}>
-          {/* 分区标题与「基本信息」同级；第一条联系人直接接在标题下，删除按钮跟在标题行右侧 */}
+          {/* 分区标题与「基本信息」同级；第一条联系人直接接在标题下，删除按钮跟在标题行右侧。
+              「添加」也放在标题行：表单末尾那个按钮在矮屏上会被压在滚动区外面，
+              客户反馈过「找不到添加联系人」，标题一露出来就能看见才保险 */}
           <div className={styles.sectionHead}>
             <span className={styles.sectionTitle}>{label}</span>
-            {fields.length ? (
-              <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => remove(fields[0].name)}>
-                {t("删除")}
+            <div className={styles.sectionActions}>
+              <Button
+                size="small"
+                icon={<PlusOutlined />}
+                disabled={fields.length >= MAX_CONTACTS}
+                onClick={() => add({ name: "", nameEn: "", title: "", phone: "", email: "", personality: "" })}
+              >
+                {t("添加联系人")}
               </Button>
-            ) : null}
+              {fields.length ? (
+                <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => remove(fields[0].name)}>
+                  {t("删除")}
+                </Button>
+              ) : null}
+            </div>
           </div>
           {fields.length === 0 ? <div className={styles.empty}>{t("暂无联系人")}</div> : null}
           {fields.map((field, index) => {

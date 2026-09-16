@@ -13,6 +13,12 @@
   gap: 8px;
 }
 
+.sectionActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .sectionTitle {
   display: flex;
   align-items: center;

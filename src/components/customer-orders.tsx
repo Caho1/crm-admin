@@ -403,7 +403,7 @@ export function CustomerOrders({
         onOk={() => void submit()}
         onCancel={() => setModalOpen(false)}
         destroyOnHidden
-        styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "auto", paddingRight: 4 } }}
+        styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "scroll", paddingRight: 4 } }}
       >
         {/* 标签在左、控件在右，和客户表单一套观感 */}
         <Form

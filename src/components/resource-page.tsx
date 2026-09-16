@@ -648,7 +648,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
         onOk={() => void submit()}
         onCancel={() => setModalOpen(false)}
         destroyOnHidden
-        styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "auto", paddingRight: 4 } }}
+        styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "scroll", paddingRight: 4 } }}
       >
         {/* destroyOnHidden 保证每次打开重新挂载，initialValues 在首帧即生效，避免先空后填的闪烁。
             这里不能用 preserve={false}：它会把 Form.List（客户联系人）里的初始值清掉，

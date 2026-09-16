@@ -74,7 +74,9 @@ export function paginationFrom(searchParams: URLSearchParams) {
   const requestedPage = Number(searchParams.get("page") || 1);
   const requestedSize = Number(searchParams.get("pageSize") || 20);
   const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
-  const pageSize = [10, 20, 50, 100].includes(requestedSize) ? requestedSize : 20;
+  // 5 是客户档案页里嵌的紧凑列表（订单 / 拜访）用的页大小：白名单漏了它会被回落成 20，
+  // 结果前端按 5 算页码、服务端按 20 取数据，翻到后面几页就是错行甚至空白
+  const pageSize = [5, 10, 20, 50, 100].includes(requestedSize) ? requestedSize : 20;
   return { page, pageSize, offset: (page - 1) * pageSize };
 }
 

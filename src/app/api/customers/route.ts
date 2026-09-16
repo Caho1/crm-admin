@@ -57,9 +57,30 @@ export async function GET(request: Request) {
     if (searchParams.get("ownerId")) {
       addCondition(conditions, params, "c.owner_id = ?", Number(searchParams.get("ownerId")));
     }
+    // 按型号筛客户：口径是「买过」，只认未删除的订单，商机和拜访推荐都不算。
+    // 命中的客户会额外带出该型号的订单笔数 / 数量 / 最近下单日期（见下面的 productStats）
+    const productId = Number(searchParams.get("productId")) || 0;
+    if (productId) {
+      addCondition(
+        conditions,
+        params,
+        "EXISTS (SELECT 1 FROM orders po WHERE po.customer_id = c.id AND po.product_id = ? AND po.deleted_at IS NULL)",
+        productId,
+      );
+    }
     const where = whereSql(conditions);
     const db = getDb();
     const edit = customerCanEdit(user, "c");
+    // 只在按型号筛选时才算这三个聚合值，平时不做这份额外扫描
+    const productStats = productId
+      ? {
+          sql: `,
+          (SELECT COUNT(*) FROM orders po WHERE po.customer_id = c.id AND po.product_id = ? AND po.deleted_at IS NULL) AS productOrderCount,
+          (SELECT SUM(po.quantity) FROM orders po WHERE po.customer_id = c.id AND po.product_id = ? AND po.deleted_at IS NULL) AS productQuantity,
+          (SELECT MAX(po.order_date) FROM orders po WHERE po.customer_id = c.id AND po.product_id = ? AND po.deleted_at IS NULL) AS productLastOrderDate`,
+          params: [productId, productId, productId],
+        }
+      : { sql: "", params: [] as number[] };
     const total = (db.prepare(`SELECT COUNT(*) AS count FROM customers c ${where}`).get(...params) as { count: number }).count;
     const rows = db
       .prepare(`
@@ -73,13 +94,14 @@ export async function GET(request: Request) {
           (SELECT COUNT(*) FROM opportunities o WHERE o.customer_id = c.id AND o.deleted_at IS NULL) AS opportunityCount,
           (SELECT COUNT(*) FROM orders ord WHERE ord.customer_id = c.id AND ord.deleted_at IS NULL) AS orderCount,
           ${edit.sql} AS canEdit
+          ${productStats.sql}
         FROM customers c
         JOIN users owner ON owner.id = c.owner_id
         ${where}
-        ORDER BY c.updated_at DESC, c.id DESC
+        ORDER BY ${productId ? "productOrderCount DESC, productLastOrderDate DESC, " : ""}c.updated_at DESC, c.id DESC
         LIMIT ? OFFSET ?
       `)
-      .all(...edit.params, ...params, pageSize, offset);
+      .all(...edit.params, ...productStats.params, ...params, pageSize, offset);
     return ok(rows, { page, pageSize, total });
   } catch (error) {
     return handleApiError(error);

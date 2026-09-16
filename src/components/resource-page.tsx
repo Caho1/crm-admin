@@ -70,7 +70,7 @@ type Column = {
  * 列表筛选下拉：选项要么来自标签字典（dictType），
  * 要么来自库里实际录入过的值（source，如手填的行业）
  */
-type DictFilter = { key: string; placeholder: string; dictType?: DictType; source?: "industries" };
+type DictFilter = { key: string; placeholder: string; dictType?: DictType; source?: "industries" | "products"; wide?: boolean };
 // 栏目名由 AppShell 顶栏统一展示，Config 不再带 title
 type Config = {
   endpoint: string;
@@ -105,6 +105,8 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       dictFilters: [
         { key: "category", dictType: "customer_category", placeholder: t("全部分类") },
         { key: "industry", source: "industries", placeholder: t("全部行业") },
+        // 按型号找客户：口径是「买过这个型号」（有未删除的订单），选中后列表会多出该型号的订单笔数
+        { key: "productId", source: "products", placeholder: t("按型号找客户"), wide: true },
       ],
       columns: [
         { title: t("客户名称"), dataIndex: "name", width: 200, kind: "primary", ellipsis: true },
@@ -162,6 +164,21 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       defaults: () => ({ status: "active", competitors: [] }),
     },
   };
+}
+
+/** 列表筛选下拉的选项：标签字典 / 产品型号 / 库里录过的行业，三种来源各自成型 */
+function filterOptionsFor(item: DictFilter, lookups: Lookups, t: TFn, locale: string): Option[] {
+  if (item.dictType) {
+    return (lookups.dicts?.[item.dictType] || []).map((option) => ({ value: option.code, label: dictLabel(option, locale) }));
+  }
+  // 型号筛选存产品 id（统一按字符串放进 dictFilter）；停用型号也留着，历史订单还挂在上面
+  if (item.source === "products") {
+    return (lookups.products || []).map((product) => ({
+      value: String(product.id),
+      label: (product.label || `${product.className} / ${product.grade}`) + (product.status === "inactive" ? `（${t("已停用")}）` : ""),
+    }));
+  }
+  return (lookups.industries || []).map((value) => ({ value, label: value }));
 }
 
 function formatNumber(value: unknown) {
@@ -359,6 +376,16 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
     return String(record.name || record.id);
   };
 
+  // 选中型号筛选后，接口会额外下发该型号的订单笔数 / 数量 / 最近下单日期，
+  // 列表和卡片都把它显出来，省得再点进客户订单页数一遍
+  const productFilterId = resource === "customers" ? dictFilter.productId : undefined;
+  const productUsageText = (record: RowData) => {
+    const count = Number(record.productOrderCount || 0);
+    if (!count) return "";
+    const quantity = Number(record.productQuantity || 0);
+    return `${t("{n} 笔", { n: count })} · ${t("{n} MT", { n: formatNumber(quantity) })}`;
+  };
+
   const tableColumns: TableProps<RowData>["columns"] = (() => {
     const columns: TableProps<RowData>["columns"] = config.columns.map((column, index) => ({
       title: column.title,
@@ -428,6 +455,23 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
         return value === null || value === undefined || value === "" ? <span className={styles.muted}>-</span> : String(value);
       },
     }));
+    if (productFilterId) {
+      columns.push({
+        title: t("该型号"),
+        key: "productUsage",
+        width: 210,
+        render: (_value, record) => {
+          const text = productUsageText(record);
+          if (!text) return <span className={styles.muted}>-</span>;
+          return (
+            <span className={styles.nowrap}>
+              <Tag color="blue">{text}</Tag>
+              {record.productLastOrderDate ? <span className={styles.muted}>{String(record.productLastOrderDate)}</span> : null}
+            </span>
+          );
+        },
+      });
+    }
     if (canWrite || resource === "customers") {
       columns.push({
         title: t("操作"),
@@ -480,15 +524,13 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
         {config.dictFilters?.map((item) => (
           <Select
             key={item.key}
-            className={styles.filter}
+            className={item.wide ? styles.filterWide : styles.filter}
             allowClear
             showSearch
             optionFilterProp="label"
             placeholder={item.placeholder}
             value={dictFilter[item.key]}
-            options={item.dictType
-              ? (lookups.dicts?.[item.dictType] || []).map((option) => ({ value: option.code, label: dictLabel(option, locale) }))
-              : (lookups[item.source || "industries"] || []).map((value) => ({ value, label: value }))}
+            options={filterOptionsFor(item, lookups, t, locale)}
             onChange={(value) => { setDictFilter((prev) => ({ ...prev, [item.key]: value })); setPage(1); }}
           />
         ))}
@@ -529,6 +571,9 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
                 <div className={styles.cardTags}>
                   {category ? <Tag color="blue">{category}</Tag> : null}
                   {industry ? <Tag>{industry}</Tag> : null}
+                  {productFilterId && productUsageText(record)
+                    ? <Tag color="gold">{t("该型号")} {productUsageText(record)}</Tag>
+                    : null}
                 </div>
                 <dl className={styles.cardMeta}>
                   <div><dt>{t("客户编号")}</dt><dd>{record.id as number}</dd></div>
@@ -558,7 +603,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
             columns={tableColumns}
             dataSource={rows}
             sticky
-            scroll={{ x: Math.max(900, config.columns.reduce((sum, column) => sum + (column.width || 120), 0) + 110) }}
+            scroll={{ x: Math.max(900, config.columns.reduce((sum, column) => sum + (column.width || 120), 0) + 110 + (productFilterId ? 210 : 0)) }}
             pagination={{
               current: page,
               pageSize,

@@ -583,7 +583,8 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
                   <div><dt>{t("最近拜访")}</dt><dd>{String(record.latestVisitDate || "-")}</dd></div>
                   <div><dt>{t("订单")}</dt><dd>{formatNumber(record.orderCount)}</dd></div>
                 </dl>
-                <div className={styles.cardAddress}>{String(record.address || "-")}</div>
+                {/* 地址不在卡片上出：一行灰字挂在底部太散，完整地址在客户档案页看。
+                    搜索仍然照常匹配地址关键词 */}
                 {/* 卡片不再挂操作按钮：点客户名进详情，编辑与删除都在详情页里 */}
               </article>
             );

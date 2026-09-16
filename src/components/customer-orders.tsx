@@ -213,6 +213,8 @@ export function CustomerOrders({
       title: t("产品"),
       key: "product",
       width: 135,
+      // 牌号长短不一，整列左对齐，见 globals.css 里的 crm-cell-left
+      className: "crm-cell-left",
       render: (_, row) => (row.grade
         ? <span className={resStyles.product}><span className={resStyles.productClass}>{String(row.className)}</span>{String(row.grade)}</span>
         : <span className={resStyles.muted}>-</span>),

@@ -70,6 +70,14 @@ a {
   text-align: center !important;
 }
 
+/* 个别列不跟着居中：产品列是「大类标签 + 牌号」，牌号长短不一，
+   居中会让每行的起始位置参差，改成整列左对齐（表头一起左对齐才不别扭）。
+   要压过上面两条 !important，选择器得比它们更具体 */
+.ant-table-wrapper .ant-table-thead > tr > th.crm-cell-left,
+.ant-table-wrapper .ant-table-tbody > tr > td.crm-cell-left {
+  text-align: left !important;
+}
+
 .ant-table-wrapper .ant-table-cell {
   vertical-align: middle;
 }

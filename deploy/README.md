@@ -59,3 +59,19 @@ curl -f http://127.0.0.1:3003/api/health
 MinIO bucket 私有，应用鉴权后代理下载，数据库只保存对象 key 和元数据。SQLite 桌面模式继续使用原有 BLOB。文件删除/覆盖后暂时保留未引用对象，以免破坏历史备份和并发请求；后续可依据数据库引用和备份保留期离线清理。完整备份需要同时保存 PostgreSQL dump、`files` 目录及受保护的运行环境文件。
 
 IP 模式使用 HTTP，`INSECURE_COOKIE=1` 支持登录；配置域名与 HTTPS 后应移除此设置。
+
+## IP HTTPS
+
+Certbot 5.4+ 支持 Let's Encrypt 的短期 IP 证书。使用 Python 3.12 虚拟环境安装 Certbot 到 `/opt/crm/certbot`。先在 HTTP server 中增加 `/.well-known/acme-challenge/` 的 webroot `/opt/crm/acme`，然后签发：
+
+```bash
+/opt/crm/certbot/bin/certbot certonly --non-interactive --agree-tos \
+  --register-unsafely-without-email --preferred-profile shortlived \
+  --webroot -w /opt/crm/acme --ip-address YOUR_PUBLIC_IP --cert-name crm-ip
+```
+
+`nginx-https.conf` 是 HTTPS 配置模板，将 `__PUBLIC_IP__` 替换为实际 IP。证书由 Nginx 直接加载；密钥保留在 `/etc/letsencrypt`，不入仓库。部署 `renew-certificate.sh` 到 `/opt/crm/renew-certificate.sh`，两个 `crm-cert-renew.*` 文件到 `/etc/systemd/system`，执行 `systemctl daemon-reload && systemctl enable --now crm-cert-renew.timer`，每天检查续期两次，续期后验证并热加载 Nginx。
+
+必须在云控制台安全组/轻量服务器防火墙放行 TCP 443。先从另一台机器验证 HTTPS 可访问，再启用模板中的 HTTP→HTTPS 跳转、移除 `runtime.env` 中的 `INSECURE_COOKIE=1` 并仅重启 `crm-web`。公网 443 尚未放行时，HTTP 应保持代理原应用，不能提前强制跳转。`publish.sh` 不覆盖 `shared/nginx.conf`，后续应用发布会保留 TLS 配置。
+
+参考：https://letsencrypt.org/2026/03/11/shorter-certs-certbot/

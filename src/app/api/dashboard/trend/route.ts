@@ -54,17 +54,17 @@ export async function GET(request: Request) {
     const { keys, rangeStart } = buildBuckets(granularity);
 
     // 新增客户趋势：按客户建档时间分桶（围绕客户管理，工作台第一张趋势图看的是客户增长而不是订单量）
-    const customerRows = db
+    const customerRows = (await db
       .prepare(`
         SELECT ${bucketExpr("c.created_at", granularity)} AS bucket, COUNT(*) AS count
         FROM customers c
         WHERE c.deleted_at IS NULL AND c.created_at >= ? AND ${scope.sql}
         GROUP BY bucket
       `)
-      .all(rangeStart, ...scope.params) as Array<{ bucket: string; count: number }>;
+      .all(rangeStart, ...scope.params)) as Array<{ bucket: string; count: number }>;
 
     // 拜访活跃度趋势：按拜访日期分桶，看客情维护是否跟得上
-    const visitRows = db
+    const visitRows = (await db
       .prepare(`
         SELECT ${bucketExpr("v.visit_date", granularity)} AS bucket, COUNT(*) AS count
         FROM visits v
@@ -72,7 +72,7 @@ export async function GET(request: Request) {
         WHERE v.deleted_at IS NULL AND c.deleted_at IS NULL AND v.visit_date >= ? AND ${scope.sql}
         GROUP BY bucket
       `)
-      .all(rangeStart, ...scope.params) as Array<{ bucket: string; count: number }>;
+      .all(rangeStart, ...scope.params)) as Array<{ bucket: string; count: number }>;
 
     const trend = keys.map((bucket) => ({
       bucket,

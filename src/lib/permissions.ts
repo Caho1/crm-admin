@@ -30,12 +30,12 @@ export function customerCanEdit(user: SessionUser, alias = "c") {
   };
 }
 
-export function assertCustomerAccess(
+export async function assertCustomerAccess(
   user: SessionUser,
   customerId: number,
   mode: AccessMode = "view",
 ) {
-  const row = getDb()
+  const row = (await getDb()
     .prepare(`
       SELECT c.id, c.owner_id AS ownerId,
         (SELECT access FROM customer_members cm
@@ -43,7 +43,7 @@ export function assertCustomerAccess(
       FROM customers c
       WHERE c.id = ? AND c.deleted_at IS NULL
     `)
-    .get(user.id, customerId) as
+    .get(user.id, customerId)) as
     | { id: number; ownerId: number; memberAccess: "view" | "edit" | null }
     | undefined;
 
@@ -53,16 +53,16 @@ export function assertCustomerAccess(
   throw new ApiError(403, "FORBIDDEN", "你没有访问该客户的权限");
 }
 
-export function assertResourceAccess(
+export async function assertResourceAccess(
   user: SessionUser,
   resource: CustomerResource,
   resourceId: number,
   mode: AccessMode = "view",
 ) {
-  const row = getDb()
+  const row = (await getDb()
     .prepare(`SELECT customer_id AS customerId FROM ${resource} WHERE id = ? AND deleted_at IS NULL`)
-    .get(resourceId) as { customerId: number } | undefined;
+    .get(resourceId)) as { customerId: number } | undefined;
   if (!row) throw new ApiError(404, "NOT_FOUND", "记录不存在或已删除");
-  assertCustomerAccess(user, row.customerId, mode);
+  await assertCustomerAccess(user, row.customerId, mode);
   return row;
 }

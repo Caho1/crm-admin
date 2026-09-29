@@ -1,7 +1,7 @@
 "use client";
 
-import { DownloadOutlined, FileExcelOutlined, InboxOutlined, TableOutlined, UploadOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Empty, Modal, Table, Tag, Upload, type TableProps, type UploadFile } from "antd";
+import { ColumnHeightOutlined, DownloadOutlined, FileExcelOutlined, InboxOutlined, TableOutlined, UploadOutlined } from "@ant-design/icons";
+import { Alert, App, Button, Empty, Modal, Select, Table, Tag, Upload, type TableProps, type UploadFile } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { useLocale } from "./providers";
@@ -41,6 +41,51 @@ type ImportResult = {
   onlyMissingReferences?: boolean;
 };
 
+/**
+ * 表头认不全时接口返回的东西：文件自己的列、几行样例、自动认出来的映射，
+ * 前端据此弹「列对应」让用户把剩下的列指上。字段 → 列号（1 开始，0 表示不导入）
+ */
+type MappingPayload = {
+  needsMapping: true;
+  headerRow: number;
+  headers: string[];
+  samples: string[][];
+  sheetHead: Array<{ row: number; cells: string[] }>;
+  mapping: Record<string, number>;
+  fields: string[];
+  requiredFields: string[];
+  missingFields: string[];
+};
+
+/** 系统字段的中文名：接口只回字段 key，显示什么由前端按当前语言决定 */
+function fieldLabels(t: (text: string) => string): Record<string, string> {
+  return {
+    orderNo: t("订单编号"),
+    orderDate: t("下单日期"),
+    customerName: t("客户"),
+    className: t("产品大类"),
+    grade: t("型号 / 牌号（Grade）"),
+    application: t("用途"),
+    quantity: t("数量"),
+    price: t("单价"),
+    currency: t("币种"),
+    orderNature: t("订单性质"),
+    productionBase: t("生产基地"),
+    pic: t("跟进人"),
+    destination: t("目的地"),
+    tradeTerms: t("贸易条款"),
+    paymentMethod: t("付款方式"),
+    shipmentMonth: t("出货月份"),
+    lcTtDate: t("LC / TT 日期"),
+    actualShipmentDate: t("实际出货日期"),
+    expectedArrivalDate: t("预计到港日期"),
+    contractNo: t("合同号"),
+    invoiceNo: t("发票号"),
+    status: t("状态"),
+    notes: t("备注"),
+  };
+}
+
 type PanelConfig = {
   endpoint: string;
   templateHref: string;
@@ -58,11 +103,28 @@ function ImportPanel({ config }: { config: PanelConfig }) {
   const { message } = App.useApp();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [checking, setChecking] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   // 预检表格里勾选要导入的 Excel 行号，默认全选
   const [selectedRows, setSelectedRows] = useState<number[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
+  // 列对应：mappingStep 有值时弹窗打开；确认后的结果存进 mapping / headerRow，
+  // 之后的预检与确认导入都带着它们发，后端才不会又去猜一遍
+  const [mappingStep, setMappingStep] = useState<MappingPayload | null>(null);
+  const [mappingDraft, setMappingDraft] = useState<Record<string, number>>({});
+  const [mapping, setMapping] = useState<Record<string, number> | null>(null);
+  const [headerRow, setHeaderRow] = useState<number | null>(null);
+  const labels = fieldLabels(t);
+
+  const resetFile = (next: UploadFile[]) => {
+    setUploadError(null);
+    setFileList(next);
+    setResult(null);
+    setMappingStep(null);
+    setMapping(null);
+    setHeaderRow(null);
+  };
 
   // 一行能不能导：表里的客户/产品系统中还没有时一律自动新建，
   // 所以「只差客户/产品」不算问题，只有真正的数据错误（日期、数量等）才导不了
@@ -72,18 +134,28 @@ function ImportPanel({ config }: { config: PanelConfig }) {
     setSelectedRows((result?.preview ?? []).filter((row) => !row.error || row.fixableByCreate).map((row) => row.row));
   }, [result?.preview]);
 
-  const upload = async (commit: boolean) => {
+  const upload = async (
+    commit: boolean,
+    /** 列对应弹窗里改过的映射 / 表头行；remap 表示「不管认没认出来，都先让我对一遍列」 */
+    override?: { mapping?: Record<string, number>; headerRow?: number; remap?: boolean },
+  ) => {
     const file = fileList[0]?.originFileObj;
     if (!file) {
       message.warning(t("请先选择导入文件"));
       return;
     }
+    setUploadError(null);
     if (commit) setImporting(true);
     else setChecking(true);
     try {
       const form = new FormData();
       form.append("file", file);
       form.append("commit", String(commit));
+      const effectiveMapping = override?.mapping ?? mapping;
+      const effectiveHeaderRow = override?.headerRow ?? headerRow;
+      if (effectiveMapping) form.append("mapping", JSON.stringify(effectiveMapping));
+      if (effectiveHeaderRow) form.append("headerRow", String(effectiveHeaderRow));
+      if (override?.remap) form.append("remap", "true");
       // 表里的客户/产品系统中还没有就直接建 —— 导一张月度订单表，本来就意味着
       // 要把里面的客户和牌号建进系统，没必要再让用户确认一次
       if (commit) {
@@ -95,6 +167,13 @@ function ImportPanel({ config }: { config: PanelConfig }) {
       const response = await apiFetch(config.endpoint, { method: "POST", body: form });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message || "Excel 处理失败");
+      // 表头没认全（或用户主动要求重对）：先让他把列指清楚，再回来预检
+      if (payload.data?.needsMapping) {
+        setResult(null);
+        setMappingStep(payload.data);
+        setMappingDraft(payload.data.mapping || {});
+        return;
+      }
       setResult(payload.data);
       if (commit) {
         if (payload.data.valid) {
@@ -110,7 +189,9 @@ function ImportPanel({ config }: { config: PanelConfig }) {
         if (payload.data.valid) message.success(t("预检通过，可以确认导入"));
       }
     } catch (error) {
-      message.error(t(error instanceof Error ? error.message : "Excel 处理失败"));
+      const text = t(error instanceof Error ? error.message : "Excel 处理失败");
+      setUploadError(text);
+      message.error(text);
     } finally {
       setChecking(false);
       setImporting(false);
@@ -159,6 +240,13 @@ function ImportPanel({ config }: { config: PanelConfig }) {
     },
   ];
 
+  // 列对应弹窗用：必填字段排前面；还没指定的必填字段决定「确定」能不能点
+  const mappingFields = mappingStep
+    ? [...mappingStep.fields].sort((a, b) =>
+        Number(mappingStep.requiredFields.includes(b)) - Number(mappingStep.requiredFields.includes(a)))
+    : [];
+  const unmappedRequired = mappingStep ? mappingStep.requiredFields.filter((field) => !mappingDraft[field]) : [];
+
   return (
     <div>
       <div className={styles.header}>
@@ -169,6 +257,7 @@ function ImportPanel({ config }: { config: PanelConfig }) {
           ) : null}
         </div>
       </div>
+      {uploadError ? <Alert type="error" showIcon title={uploadError} /> : null}
       <section className={styles.section}>
         <div className={styles.sectionBody}>
           <Upload.Dragger
@@ -176,18 +265,29 @@ function ImportPanel({ config }: { config: PanelConfig }) {
             accept=".xlsx,.csv"
             maxCount={1}
             fileList={fileList}
-            beforeUpload={() => false}
-            onChange={({ fileList: next }) => { setFileList(next.slice(-1)); setResult(null); }}
-            onRemove={() => { setFileList([]); setResult(null); }}
+            disabled={checking || importing}
+            beforeUpload={(file) => {
+              const error = !/\.(xlsx|csv)$/i.test(file.name) ? t("仅支持 .xlsx 或 .csv 文件")
+                : file.size > 5 * 1024 * 1024 ? t("导入文件不能超过 5MB") : null;
+              if (error) { setUploadError(error); message.error(error); return Upload.LIST_IGNORE; }
+              return false;
+            }}
+            onChange={({ fileList: next }) => resetFile(next.slice(-1))}
+            onRemove={() => resetFile([])}
           >
             <p className="ant-upload-drag-icon"><InboxOutlined /></p>
             <p className="ant-upload-text">{config.uploadText}</p>
             <p className="ant-upload-hint">{config.hint}</p>
+            <p className="ant-upload-hint">{t("客户名称必填；单价可留空。日期支持年/月/日、日/月/年、英文月份和 Excel 日期；歧义日期如 03/04/2026 按日/月/年识别")}</p>
           </Upload.Dragger>
           <div className={styles.actions}>
             <Button icon={<UploadOutlined />} loading={checking} disabled={!fileList.length} onClick={() => void upload(false)}>{t("开始预检")}</Button>
+            {/* 自动认出来的列对不对，用户想自己确认一遍时走这里 */}
+            <Button icon={<ColumnHeightOutlined />} disabled={!fileList.length || checking} onClick={() => void upload(false, { mapping: mapping ?? {}, remap: true })}>
+              {t("手动对应列")}
+            </Button>
             {/* 勾选为空时不让点：避免一次什么都没导还提示成功 */}
-            <Button type="primary" loading={importing} disabled={!result?.valid || !fileList.length || !selectedRows.length} onClick={() => void upload(true)}>{t("确认导入")}</Button>
+            <Button type="primary" loading={importing} disabled={!fileList.length || !selectedRows.length || done} onClick={() => void upload(true)}>{t("确认导入")}</Button>
           </div>
         </div>
       </section>
@@ -235,6 +335,118 @@ function ImportPanel({ config }: { config: PanelConfig }) {
         </section>
       ) : null}
 
+      {/* 列对应弹窗：左边是系统字段，右边挑这份文件里的哪一列喂给它。
+          自动认出来的已经预先填好，用户只要补上没认出来的那几个 */}
+      {mappingStep ? (
+        <Modal
+          title={t("对应表格的列")}
+          open
+          onCancel={() => setMappingStep(null)}
+          width={820}
+          centered
+          okText={t("确定并预检")}
+          cancelText={t("取消")}
+          okButtonProps={{ loading: checking, disabled: unmappedRequired.length > 0 }}
+          onOk={() => {
+            const next = { ...mappingDraft };
+            const row = mappingStep.headerRow;
+            setMapping(next);
+            setHeaderRow(row);
+            setMappingStep(null);
+            void upload(false, { mapping: next, headerRow: row });
+          }}
+          styles={{ body: { maxHeight: "calc(100vh - 260px)", overflowY: "scroll" } }}
+        >
+          <Alert
+            showIcon
+            type={unmappedRequired.length ? "warning" : "info"}
+            className={styles.mappingAlert}
+            title={unmappedRequired.length
+              ? t("还有 {n} 个必填字段没指定：{fields}", {
+                  n: unmappedRequired.length,
+                  fields: unmappedRequired.map((field) => labels[field] || field).join("、"),
+                })
+              : t("已自动认出 {n} 列，确认无误即可继续", { n: Object.values(mappingDraft).filter(Boolean).length })}
+            description={t("列的顺序不影响识别；客户为必填。单价留空会保存为空；其他可选字段留空时更新保留原值")}
+          />
+          <div className={styles.mappingHeaderRow}>
+            <span className={styles.mappingHeaderLabel}>{t("表头在第几行")}</span>
+            <Select
+              className={styles.mappingHeaderSelect}
+              value={mappingStep.headerRow}
+              disabled={checking}
+              // 换一行当表头要重新读这份文件：重新发一次请求，让后端按新行认一遍
+              onChange={(row) => void upload(false, { headerRow: row, mapping: {}, remap: true })}
+              options={mappingStep.sheetHead.map((item) => ({
+                value: item.row,
+                label: `${t("第 {row} 行", { row: item.row })}：${item.cells.filter(Boolean).slice(0, 5).join(" | ").slice(0, 60) || t("（空行）")}`,
+              }))}
+            />
+          </div>
+          <Table<string>
+            rowKey={(field) => field}
+            size="small"
+            dataSource={mappingFields}
+            pagination={false}
+            columns={[
+              {
+                title: t("系统字段"),
+                key: "field",
+                width: 190,
+                render: (_: unknown, field: string) => (
+                  <span className={styles.mappingField}>
+                    {labels[field] || field}
+                    {mappingStep.requiredFields.includes(field) ? <Tag color="red">{t("必填")}</Tag> : null}
+                  </span>
+                ),
+              },
+              {
+                title: t("对应文件里的列"),
+                key: "column",
+                render: (_: unknown, field: string) => (
+                  <Select
+                    className={styles.mappingSelect}
+                    showSearch
+                    optionFilterProp="label"
+                    value={mappingDraft[field] || 0}
+                    status={mappingStep.requiredFields.includes(field) && !mappingDraft[field] ? "error" : undefined}
+                    onChange={(column) => setMappingDraft((prev) => {
+                      const next = { ...prev, [field]: column };
+                      // 一列只能喂一个字段：选中的列若已被别的字段占用，把那个字段让出来
+                      if (column) {
+                        for (const [other, value] of Object.entries(next)) {
+                          if (other !== field && value === column) next[other] = 0;
+                        }
+                      }
+                      return next;
+                    })}
+                    options={[
+                      { value: 0, label: t("不导入") },
+                      ...mappingStep.headers.map((header, index) => ({
+                        value: index + 1,
+                        label: header || t("第 {n} 列", { n: index + 1 }),
+                      })),
+                    ]}
+                  />
+                ),
+              },
+              {
+                title: t("样例"),
+                key: "sample",
+                width: 220,
+                ellipsis: true,
+                render: (_: unknown, field: string) => {
+                  const column = mappingDraft[field];
+                  if (!column) return <span className={styles.muted}>-</span>;
+                  const values = mappingStep.samples.map((row) => row[column - 1]).filter(Boolean).slice(0, 2);
+                  return values.length ? <span className={styles.softText}>{values.join(" / ")}</span> : <span className={styles.muted}>-</span>;
+                },
+              },
+            ]}
+          />
+        </Modal>
+      ) : null}
+
       {/* 导入明细弹窗：整份文件逐行列出，重复行标红，勾掉的行不导入 */}
       <Modal
         title={t("导入明细")}
@@ -245,9 +457,10 @@ function ImportPanel({ config }: { config: PanelConfig }) {
         okText={t("确认导入")}
         cancelText={t("取消")}
         okButtonProps={{ loading: importing, disabled: !selectedRows.length }}
-        onOk={() => void upload(true).then(() => setPreviewOpen(false))}
+        onOk={() => void upload(true)}
         styles={{ body: { maxHeight: "calc(100vh - 260px)", overflowY: "scroll" } }}
       >
+        {uploadError ? <Alert type="error" showIcon title={uploadError} /> : null}
         <div className={styles.modalSummary}>
           <span>{t("共 {n} 行", { n: result?.preview?.length ?? 0 })}</span>
           {duplicateCount ? (

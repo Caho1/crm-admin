@@ -12,7 +12,7 @@ const eslintConfig = defineConfig([
   },
   {
     // Electron 主进程跑在 Node CommonJS 下，require() 是正常写法
-    files: ["electron/**/*.js"],
+    files: ["electron/**/*.js", "main.js", "deploy/*.cjs"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
     },
@@ -22,6 +22,7 @@ const eslintConfig = defineConfig([
     // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",
+    "release/**",
     "build/**",
     "next-env.d.ts",
   ]),

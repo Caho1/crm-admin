@@ -1,11 +1,11 @@
 "use client";
 
-import { DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, RightOutlined } from "@ant-design/icons";
+import { CheckOutlined, DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, RightOutlined } from "@ant-design/icons";
 import { App, Button, DatePicker, Descriptions, Drawer, Empty, Form, Input, InputNumber, Modal, Popconfirm, Select, Table, Tag, Tooltip, type TableProps } from "antd";
 import dayjs from "dayjs";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/client-fetch";
 import { dictLabel, dictLabelOf, type DictItem } from "@/lib/dicts";
 import { useLocale } from "./providers";
@@ -19,6 +19,12 @@ type UserOption = { id: number; name: string };
 type CustomerOption = { id: number; name: string };
 
 const CURRENCIES = ["USD", "CNY", "KRW", "HKD"];
+const QUICK_FILTERS = [
+  { field: "currency", value: "USD", label: "美金合同" },
+  { field: "currency", value: "CNY", label: "人民币合同" },
+  { field: "orderNature", value: "成熟", label: "成熟订单" },
+  { field: "orderNature", value: "开发", label: "开发订单" },
+] as const;
 // 履约概要按流程顺序汇总，一眼看出这个客户整体走到哪一步
 export const STATUS_FLOW = ["planned", "confirmed", "shipped", "arrived"] as const;
 
@@ -78,13 +84,16 @@ export function CustomerOrders({
   const [arrivingSoon, setArrivingSoon] = useState(() => searchParams.get("arrivingSoon") === "1");
   const [dateFrom, setDateFrom] = useState(() => searchParams.get("dateFrom") || "");
   const [dateTo, setDateTo] = useState(() => searchParams.get("dateTo") || "");
-  const [currencyFilter, setCurrencyFilter] = useState(() => searchParams.get("currency") || "");
+  const [currencyFilters, setCurrencyFilters] = useState(() => [...new Set(searchParams.getAll("currency").filter(Boolean))]);
+  const [natureFilters, setNatureFilters] = useState(() => [...new Set(searchParams.getAll("orderNature").filter(Boolean))]);
+  const loadId = useRef(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<OrderRow | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
   const [detail, setDetail] = useState<OrderRow | null>(null);
 
   const load = useCallback(async () => {
+    const requestId = ++loadId.current;
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -97,19 +106,21 @@ export function CustomerOrders({
       if (arrivingSoon) params.set("arrivingSoon", "1");
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
-      if (currencyFilter) params.set("currency", currencyFilter);
+      currencyFilters.forEach((value) => params.append("currency", value));
+      natureFilters.forEach((value) => params.append("orderNature", value));
       const response = await apiFetch(`/api/orders?${params}`);
       const payload = await response.json();
+      if (requestId !== loadId.current) return;
       if (!response.ok) throw new Error(payload.error?.message || "订单加载失败");
       setRows(payload.data);
       setTotal(payload.meta?.total || 0);
       setStatusCounts(payload.meta?.statusCounts || {});
     } catch (error) {
-      message.error(t(error instanceof Error ? error.message : "订单加载失败"));
+      if (requestId === loadId.current) message.error(t(error instanceof Error ? error.message : "订单加载失败"));
     } finally {
-      setLoading(false);
+      if (requestId === loadId.current) setLoading(false);
     }
-  }, [arrivingSoon, currencyFilter, customerId, dateFrom, dateTo, message, page, pageSize, query, status, t]);
+  }, [arrivingSoon, currencyFilters, natureFilters, customerId, dateFrom, dateTo, message, page, pageSize, query, status, t]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -307,10 +318,9 @@ export function CustomerOrders({
     { label: t("已取消"), value: "cancelled" },
   ];
 
-  // 状态概要：订单管理页贴在筛选行右侧的空白处（和客户档案页头把概要放右边一致），
-  // 客户订单子页没有筛选行，仍旧单独占一行；compact 嵌入时页头已有概要，不重复出
-  const summaryBlock = !compact && total > 0 ? (
-    <div className={isGlobal ? `${styles.summary} ${styles.summaryInline}` : styles.summary}>
+  // 客户订单子页保留履约概要；全局订单页改用可多选的快捷筛选。
+  const summaryBlock = !isGlobal && !compact && total > 0 ? (
+    <div className={styles.summary}>
       {STATUS_FLOW.map((status) => (
         <div key={status} className={styles.summaryChip}>
           <span className={styles.summaryNum}>{statusCounts[status] || 0}</span>
@@ -345,7 +355,7 @@ export function CustomerOrders({
             value={searchInput}
             placeholder={t("订单号、客户、产品、合同号")}
             onChange={(event) => setSearchInput(event.target.value)}
-            onSearch={(value) => { setQuery(value.trim()); setPage(1); setArrivingSoon(false); setDateFrom(""); setDateTo(""); setCurrencyFilter(""); }}
+            onSearch={(value) => { setQuery(value.trim()); setPage(1); setArrivingSoon(false); setDateFrom(""); setDateTo(""); }}
           />
           <Select
             className={resStyles.filter}
@@ -353,7 +363,7 @@ export function CustomerOrders({
             placeholder={t("全部状态")}
             value={status}
             options={orderStatuses}
-            onChange={(value) => { setStatus(value); setPage(1); setArrivingSoon(false); setDateFrom(""); setDateTo(""); setCurrencyFilter(""); }}
+            onChange={(value) => { setStatus(value); setPage(1); setArrivingSoon(false); setDateFrom(""); setDateTo(""); }}
           />
           {/* 从工作台统计卡带进来的筛选条件，给个可见可关的标记，免得疑惑列表为什么这么短 */}
           {arrivingSoon ? (
@@ -364,10 +374,29 @@ export function CustomerOrders({
               {t("下单日期")}：{dateFrom || "…"} ~ {dateTo || "…"}
             </Tag>
           ) : null}
-          {currencyFilter ? (
-            <Tag closable onClose={() => { setCurrencyFilter(""); setPage(1); }}>{t("币种")}：{currencyFilter}</Tag>
-          ) : null}
-          {summaryBlock}
+          {currencyFilters.filter((value) => value !== "USD" && value !== "CNY").map((value) => (
+            <Tag key={value} closable onClose={() => { setCurrencyFilters((current) => current.filter((item) => item !== value)); setPage(1); }}>{t("币种")}：{value}</Tag>
+          ))}
+          <div className={styles.orderQuickFilters}>
+            {QUICK_FILTERS.map(({ field, value, label }) => {
+              const selected = (field === "currency" ? currencyFilters : natureFilters).includes(value);
+              return (
+                <Button
+                  key={value}
+                  type={selected ? "primary" : "default"}
+                  aria-pressed={selected}
+                  icon={selected ? <CheckOutlined /> : undefined}
+                  onClick={() => {
+                    const update = field === "currency" ? setCurrencyFilters : setNatureFilters;
+                    update((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+                    setPage(1);
+                  }}
+                >
+                  {t(label)}
+                </Button>
+              );
+            })}
+          </div>
         </div>
       ) : null}
 
@@ -440,7 +469,7 @@ export function CustomerOrders({
             <Form.Item name="quantity" label={t("数量")} rules={[{ required: true, message: t("{label}不能为空", { label: t("数量") }) }]}>
               <InputNumber style={{ width: "100%" }} min={0} precision={2} />
             </Form.Item>
-            <Form.Item name="price" label={t("单价")} rules={[{ required: true, message: t("{label}不能为空", { label: t("单价") }) }]}>
+            <Form.Item name="price" label={t("单价")}>
               <InputNumber style={{ width: "100%" }} min={0} precision={2} />
             </Form.Item>
             <Form.Item name="currency" label={t("币种")}>

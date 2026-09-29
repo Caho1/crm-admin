@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     // 与订单列表共用筛选构造函数，保证「导出当前筛选」口径一致（含日期范围与 14 天内到港）
     const { conditions, params } = buildOrderFilters(searchParams, user);
-    const rows = getDb().prepare(`
+    const rows = (await getDb().prepare(`
       SELECT ord.order_no AS orderNo, ord.order_date AS orderDate, c.name AS customerName,
         p.class_name AS className, p.grade, p.application, ord.quantity, ord.price, ord.currency,
         ord.order_nature AS orderNature, ord.production_base AS productionBase, ord.pic,
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       FROM orders ord JOIN customers c ON c.id = ord.customer_id
       JOIN products p ON p.id = ord.product_id
       ${whereSql(conditions)} ORDER BY ord.order_date DESC, ord.id DESC
-    `).all(...params);
+    `).all(...params));
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("订单出货到港");
     worksheet.columns = [...orderExcelColumns];

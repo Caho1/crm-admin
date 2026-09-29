@@ -20,8 +20,8 @@ export async function GET(request: Request) {
     if (searchParams.get("status")) addCondition(conditions, params, "u.status = ?", searchParams.get("status"));
     const where = whereSql(conditions);
     const db = getDb();
-    const total = (db.prepare(`SELECT COUNT(*) AS count FROM users u ${where}`).get(...params) as { count: number }).count;
-    const rows = db.prepare(`
+    const total = ((await db.prepare(`SELECT COUNT(*) AS count FROM users u ${where}`).get(...params)) as { count: number }).count;
+    const rows = (await db.prepare(`
       SELECT u.id, u.username, u.name, u.role, u.status, u.locale,
         datetime(u.created_at, '+8 hours') AS createdAt,
         datetime(u.updated_at, '+8 hours') AS updatedAt,
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
       FROM users u ${where}
       ORDER BY CASE WHEN u.role = 'admin' THEN 0 ELSE 1 END, u.status, u.name
       LIMIT ? OFFSET ?
-    `).all(...params, pageSize, offset);
+    `).all(...params, pageSize, offset));
     return ok(rows, { page, pageSize, total });
   } catch (error) {
     return handleApiError(error);
@@ -44,15 +44,15 @@ export async function POST(request: Request) {
     const input = await parseBody(request, userSchema);
     if (!input.password) throw new ApiError(422, "PASSWORD_REQUIRED", "新建用户必须设置初始密码", { password: "请输入至少 8 位的初始密码" });
     const db = getDb();
-    if (db.prepare("SELECT id FROM users WHERE username = ? COLLATE NOCASE").get(input.username)) {
+    if ((await db.prepare("SELECT id FROM users WHERE username = ? COLLATE NOCASE").get(input.username))) {
       throw new ApiError(409, "DUPLICATE_USERNAME", "该登录账号已存在");
     }
-    const result = db.prepare(`
+    const result = (await db.prepare(`
       INSERT INTO users (username, name, password_hash, role, status)
       VALUES (?, ?, ?, ?, ?)
-    `).run(input.username, input.name, await bcrypt.hash(input.password, 12), input.role, input.status);
+    `).run(input.username, input.name, await bcrypt.hash(input.password, 12), input.role, input.status));
     const id = Number(result.lastInsertRowid);
-    writeAudit(admin.id, "create", "user", id, `新建用户 ${input.name}`);
+    await writeAudit(admin.id, "create", "user", id, `新建用户 ${input.name}`);
     return created({ id });
   } catch (error) {
     return handleApiError(error);

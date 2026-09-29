@@ -28,13 +28,13 @@ export async function GET(request: Request) {
     }
     if (!includeInactive) conditions.push("status = 'active'");
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-    const rows = db
+    const rows = (await db
       .prepare(`SELECT ${SELECT_COLUMNS} FROM dict_items ${where} ORDER BY type, sort_order, id`)
-      .all(...params) as DictItem[];
+      .all(...params)) as DictItem[];
 
     // 管理页需要知道每个标签被多少条业务数据引用，才能提示能否删除
     if (searchParams.get("withUsage") === "1") {
-      const usageByType = new Map(DICT_TYPES.map((item) => [item.type, dictUsageMap(item.type)]));
+      const usageByType = new Map(await Promise.all(DICT_TYPES.map(async (item) => [item.type, await dictUsageMap(item.type)] as const)));
       for (const row of rows) row.usageCount = usageByType.get(row.type)?.get(row.code) ?? 0;
     }
 
@@ -52,20 +52,20 @@ export async function POST(request: Request) {
     const user = await requireApiAdmin();
     const input = await parseBody(request, dictItemSchema);
     const db = getDb();
-    const duplicate = db
+    const duplicate = (await db
       .prepare("SELECT id FROM dict_items WHERE type = ? AND code = ? COLLATE NOCASE")
-      .get(input.type, input.code);
+      .get(input.type, input.code));
     if (duplicate) throw new ApiError(409, "DUPLICATE_DICT_CODE", "该分组下已存在相同的选项值");
 
-    const result = db
+    const result = (await db
       .prepare(`
         INSERT INTO dict_items (type, code, label, label_en, label_ko, sort_order, status)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `)
-      .run(input.type, input.code, input.label, input.labelEn, input.labelKo, input.sortOrder, input.status);
+      .run(input.type, input.code, input.label, input.labelEn, input.labelKo, input.sortOrder, input.status));
     const id = Number(result.lastInsertRowid);
     const groupLabel = DICT_TYPES.find((item) => item.type === input.type)?.label || input.type;
-    writeAudit(user.id, "create", "dict_item", id, `新建标签 ${groupLabel} / ${input.label}`);
+    await writeAudit(user.id, "create", "dict_item", id, `新建标签 ${groupLabel} / ${input.label}`);
     return created({ id });
   } catch (error) {
     return handleApiError(error);

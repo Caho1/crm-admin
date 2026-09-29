@@ -9,23 +9,23 @@ const USAGE_SOURCE: Record<DictType, { table: string; column: string; softDelete
   production_base: { table: "orders", column: "production_base", softDelete: true },
 };
 
-export function dictUsageCount(type: DictType, code: string) {
+export async function dictUsageCount(type: DictType, code: string) {
   const source = USAGE_SOURCE[type];
   if (!source) return 0;
   const where = source.softDelete ? `${source.column} = ? AND deleted_at IS NULL` : `${source.column} = ?`;
-  const row = getDb()
+  const row = (await getDb()
     .prepare(`SELECT COUNT(*) AS count FROM ${source.table} WHERE ${where}`)
-    .get(code) as { count: number };
+    .get(code)) as { count: number };
   return row.count;
 }
 
 // 一次算出某个分组下所有 code 的引用数，避免在列表里逐行查询
-export function dictUsageMap(type: DictType) {
+export async function dictUsageMap(type: DictType) {
   const source = USAGE_SOURCE[type];
   if (!source) return new Map<string, number>();
   const where = source.softDelete ? "WHERE deleted_at IS NULL" : "";
-  const rows = getDb()
+  const rows = (await getDb()
     .prepare(`SELECT ${source.column} AS code, COUNT(*) AS count FROM ${source.table} ${where} GROUP BY ${source.column}`)
-    .all() as Array<{ code: string; count: number }>;
+    .all()) as Array<{ code: string; count: number }>;
   return new Map(rows.map((row) => [row.code, row.count]));
 }

@@ -25,11 +25,11 @@ export async function GET(request: Request) {
     const where = whereSql(conditions);
     const db = getDb();
     const edit = customerCanEdit(user, "c");
-    const total = (db.prepare(`
+    const total = ((await db.prepare(`
       SELECT COUNT(*) AS count FROM opportunities o
       JOIN customers c ON c.id = o.customer_id LEFT JOIN products p ON p.id = o.product_id ${where}
-    `).get(...params) as { count: number }).count;
-    const rows = db.prepare(`
+    `).get(...params)) as { count: number }).count;
+    const rows = (await db.prepare(`
       SELECT o.id, o.name, o.customer_id AS customerId, c.name AS customerName,
         o.product_id AS productId, p.class_name AS className, p.grade,
         o.stage, o.estimated_quantity AS estimatedQuantity,
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
       ${where}
       ORDER BY CASE WHEN o.next_follow_up_date IS NULL THEN 1 ELSE 0 END,
         o.next_follow_up_date, o.updated_at DESC LIMIT ? OFFSET ?
-    `).all(...edit.params, ...params, pageSize, offset);
+    `).all(...edit.params, ...params, pageSize, offset));
     return ok(rows, { page, pageSize, total });
   } catch (error) {
     return handleApiError(error);
@@ -56,23 +56,23 @@ export async function POST(request: Request) {
   try {
     const user = await requireApiUser();
     const input = await parseBody(request, opportunitySchema);
-    assertCustomerAccess(user, input.customerId, "edit");
+    await assertCustomerAccess(user, input.customerId, "edit");
     const db = getDb();
     // 外键前置校验：产品不存在时返回 422 字段错误，而不是 SQLite 外键违例的 500
-    if (input.productId && !db.prepare("SELECT id FROM products WHERE id = ?").get(input.productId)) {
+    if (input.productId && !(await db.prepare("SELECT id FROM products WHERE id = ?").get(input.productId))) {
       throw new ApiError(422, "PRODUCT_NOT_FOUND", "产品不存在", { productId: "产品不存在" });
     }
     const ownerId = user.role === "admin" && input.ownerId ? input.ownerId : user.id;
-    const result = db.prepare(`
+    const result = (await db.prepare(`
       INSERT INTO opportunities
         (name, customer_id, product_id, stage, estimated_quantity, estimated_amount, currency,
          owner_id, next_action, next_follow_up_date, notes, status, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(input.name, input.customerId, input.productId || null, input.stage,
       input.estimatedQuantity ?? null, input.estimatedAmount ?? null, input.currency,
-      ownerId, input.nextAction, input.nextFollowUpDate, input.notes, input.status, user.id);
+      ownerId, input.nextAction, input.nextFollowUpDate, input.notes, input.status, user.id));
     const id = Number(result.lastInsertRowid);
-    writeAudit(user.id, "create", "opportunity", id, `新建商机 ${input.name}`);
+    await writeAudit(user.id, "create", "opportunity", id, `新建商机 ${input.name}`);
     return created({ id });
   } catch (error) {
     return handleApiError(error);

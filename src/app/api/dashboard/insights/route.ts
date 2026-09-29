@@ -13,7 +13,7 @@ export async function GET() {
     const db = getDb();
     const scope = customerScope(user, "c");
 
-    const customerCategory = db
+    const customerCategory = (await db
       .prepare(`
         SELECT c.category AS code, COUNT(*) AS count
         FROM customers c
@@ -21,9 +21,9 @@ export async function GET() {
         GROUP BY c.category
         ORDER BY count DESC
       `)
-      .all(...scope.params) as Array<{ code: string; count: number }>;
+      .all(...scope.params)) as Array<{ code: string; count: number }>;
 
-    const topGrades = db
+    const topGrades = (await db
       .prepare(`
         SELECT p.class_name || ' / ' || p.grade AS name,
           COUNT(*) AS orderCount,
@@ -37,7 +37,7 @@ export async function GET() {
         ORDER BY amount DESC
         LIMIT 8
       `)
-      .all(...scope.params) as Array<{ name: string; orderCount: number; quantity: number; amount: number }>;
+      .all(...scope.params)) as Array<{ name: string; orderCount: number; quantity: number; amount: number }>;
 
     return ok({
       customerCategory,

@@ -16,10 +16,10 @@ export async function GET(request: Request) {
     if (searchParams.get("action")) addCondition(conditions, params, "a.action = ?", searchParams.get("action"));
     const where = whereSql(conditions);
     const db = getDb();
-    const total = (db.prepare(`SELECT COUNT(*) AS count FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id ${where}`).get(...params) as { count: number }).count;
+    const total = ((await db.prepare(`SELECT COUNT(*) AS count FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id ${where}`).get(...params)) as { count: number }).count;
     // 对象列要显示具体名称而不是 dict_item #53：按 entity_type 回表取业务名称，
     // 记录已被删除时取不到名称，前端回退成 #id
-    const rows = db.prepare(`
+    const rows = (await db.prepare(`
       SELECT a.id, a.action, a.entity_type AS entityType, a.entity_id AS entityId,
         a.summary, datetime(a.created_at, '+8 hours') AS createdAt, u.name AS userName,
         CASE a.entity_type
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
         END AS entityName
       FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id ${where}
       ORDER BY a.id DESC LIMIT ? OFFSET ?
-    `).all(...params, pageSize, offset);
+    `).all(...params, pageSize, offset));
     return ok(rows, { page, pageSize, total });
   } catch (error) {
     return handleApiError(error);

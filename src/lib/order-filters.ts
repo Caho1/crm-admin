@@ -17,7 +17,13 @@ export function buildOrderFilters(searchParams: URLSearchParams, user: SessionUs
     )`, value, value, value, value, value, value, value, value);
   }
   if (searchParams.get("status")) addCondition(conditions, params, "ord.status = ?", searchParams.get("status"));
-  if (searchParams.get("currency")) addCondition(conditions, params, "ord.currency = ?", searchParams.get("currency"));
+  // 同一维度多选取并集，币种与订单性质之间取交集；兼容原有单币种深链。
+  for (const [key, column] of [["currency", "ord.currency"], ["orderNature", "ord.order_nature"]] as const) {
+    const values = [...new Set(searchParams.getAll(key).filter(Boolean))];
+    if (values.length) {
+      addCondition(conditions, params, `${column} IN (${values.map(() => "?").join(", ")})`, ...values);
+    }
+  }
   if (searchParams.get("customerId")) addCondition(conditions, params, "ord.customer_id = ?", Number(searchParams.get("customerId")));
   if (searchParams.get("productId")) addCondition(conditions, params, "ord.product_id = ?", Number(searchParams.get("productId")));
   if (searchParams.get("shipmentMonth")) addCondition(conditions, params, "ord.shipment_month = ?", searchParams.get("shipmentMonth"));

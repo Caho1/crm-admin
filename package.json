@@ -1,7 +1,7 @@
 {
   "name": "sales-crm-admin",
   "productName": "CRM-Admin",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -15,7 +15,8 @@
     "electron:pack": "npm run build && electron-rebuild -f -w better-sqlite3 && node scripts/copy-sqlite-build.mjs && electron-builder && rm -rf node_modules/better-sqlite3/build && npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 ABI OK for dev')\"",
     "electron:pack:dir": "npm run build && electron-rebuild -f -w better-sqlite3 && node scripts/copy-sqlite-build.mjs && electron-builder --dir && rm -rf node_modules/better-sqlite3/build && npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 ABI OK for dev')\"",
     "electron:pack:win": "node scripts/restore-sqlite-dev.mjs && npm run build && node scripts/fetch-sqlite-prebuild.mjs win32 x64 && node scripts/copy-sqlite-build.mjs && electron-builder --win portable zip --x64 && node scripts/restore-sqlite-dev.mjs",
-    "verify:installer": "node scripts/verify-installer.mjs"
+    "verify:installer": "node scripts/verify-installer.mjs",
+    "test": "tsx --test src/db/*.test.ts src/lib/*.test.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
@@ -26,7 +27,9 @@
     "better-sqlite3": "^12.11.1",
     "dayjs": "^1.11.21",
     "exceljs": "^4.4.0",
+    "minio": "^8.0.7",
     "next": "16.2.10",
+    "pg": "^8.23.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "zod": "^4.4.3"
@@ -35,6 +38,7 @@
     "@electron/rebuild": "^4.2.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "electron": "42.8.1",

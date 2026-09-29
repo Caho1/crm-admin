@@ -1,33 +1,26 @@
 import ExcelJS from "exceljs";
-import type Database from "better-sqlite3";
+import type { Database } from "@/db/client";
 import { getDb } from "@/db/client";
 import { ApiError, handleApiError, ok, requireApiAdmin } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
 import { finalizeSequentialCode, sequentialPlaceholder } from "@/lib/query";
 import type { SessionUser } from "@/lib/types";
-import { IMPORT_FILE_PATTERN, headerAliases, normalizeHeader, parseExcelDate, parseExcelNumber, parseShipmentMonth, readUploadWorksheet } from "@/lib/excel";
+import {
+  IMPORT_FILE_PATTERN,
+  REQUIRED_ORDER_FIELDS,
+  buildHeaderMapping,
+  cellToText,
+  detectHeaderRow,
+  headerAliases,
+  isErrorValue,
+  parseExcelDate,
+  parseExcelNumber,
+  parseShipmentMonth,
+  readRowTexts,
+  readUploadWorksheet,
+} from "@/lib/excel";
 
 export const runtime = "nodejs";
-
-/** #N/A、#REF! 这类公式错误值当空处理——源表里用 VLOOKUP 填的列常有查不到的行 */
-function isErrorValue(value: unknown) {
-  return Boolean(value && typeof value === "object" && "error" in value);
-}
-
-/** Excel 单元格值 → 纯文本：富文本、公式结果、日期都要能正确取到，不能落成 [object Object] */
-function cellToText(value: ExcelJS.CellValue): string {
-  if (value === null || value === undefined) return "";
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  if (isErrorValue(value)) return "";
-  if (typeof value === "object" && "richText" in value) {
-    return (value.richText as Array<{ text: string }>).map((part) => part.text).join("").trim();
-  }
-  if (typeof value === "object" && "text" in value) return String(value.text).trim();
-  if (typeof value === "object" && "result" in value) {
-    return isErrorValue(value.result) ? "" : String(value.result ?? "").trim();
-  }
-  return String(value).trim();
-}
 
 
 type ImportedOrder = {
@@ -49,7 +42,7 @@ type ImportedOrder = {
   /** 用途（용도）：写在订单行上，但它是牌号的属性，落库时回填到 products.application */
   application: string | null;
   quantity: number;
-  price: number;
+  price: number | null;
   /** 以下可选列留空表示「不改」：新建时落默认值，更新时保持库里原值 */
   currency: string | null;
   orderNature: string | null;
@@ -156,15 +149,18 @@ function isOnlyMissingReference(message: string) {
 }
 
 /** 逐行解析 + 校验；客户/产品缺失时既计入 errors，也顺带收集去重后的缺失名单供前端提示「是否新建」 */
-function parseOrderRows(worksheet: ExcelJS.Worksheet, mapping: Record<string, number>, db: Database.Database): ParsedOrders {
+async function parseOrderRows(
+  worksheet: ExcelJS.Worksheet,
+  mapping: Record<string, number>,
+  db: Database,
+  headerRowNumber: number,
+  selectedRows: Set<number> | null = null,
+): Promise<ParsedOrders> {
   const errors: Array<{ row: number; message: string }> = [];
   const validRows: ImportedOrder[] = [];
   const previewRows: PreviewRow[] = [];
-  // 表头原样带回前端：弹窗里显示的就是这份 Excel 自己的列
-  const headers: string[] = [];
-  worksheet.getRow(1).eachCell((cell, column) => {
-    headers[column - 1] = cellToText(cell.value);
-  });
+  // 表头原样带回前端：弹窗里显示的就是这份 Excel 自己的列（表头未必在第 1 行）
+  const headers = readRowTexts(worksheet, headerRowNumber);
   const rawCells = (row: ExcelJS.Row) =>
     headers.map((_, index) => cellToText(row.getCell(index + 1).value));
   const seenOrderNos = new Set<string>();
@@ -173,20 +169,24 @@ function parseOrderRows(worksheet: ExcelJS.Worksheet, mapping: Record<string, nu
   // 同一订单编号在文件里出现几次、都在哪几行，供前端弹窗把重复项列清楚
   const orderNoRows = new Map<string, { key: string; rows: number[] }>();
 
-  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+  for (let rowNumber = headerRowNumber + 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    if (selectedRows && !selectedRows.has(rowNumber)) continue;
     const row = worksheet.getRow(rowNumber);
     const rawCustomer = String(valueOf(row, mapping, "customerName") ?? "").trim();
     const rawClass = String(valueOf(row, mapping, "className") ?? "").trim();
     const rawGrade = String(valueOf(row, mapping, "grade") ?? "").trim();
-    if (!rawCustomer && !rawClass && !rawGrade) continue;
+    if (!Object.values(mapping).some((column) => cellToText(row.getCell(column).value))) continue;
 
     const rowErrors: string[] = [];
-    const orderDate = parseExcelDate(valueOf(row, mapping, "orderDate"));
-    const customer = db.prepare("SELECT id, name FROM customers WHERE name = ? COLLATE NOCASE AND deleted_at IS NULL").get(rawCustomer) as { id: number; name: string } | undefined;
-    const product = db.prepare("SELECT id, class_name AS className, grade FROM products WHERE class_name = ? COLLATE NOCASE AND grade = ? COLLATE NOCASE").get(rawClass, rawGrade) as { id: number; className: string; grade: string } | undefined;
+    const orderDate = parseExcelDate(valueOf(row, mapping, "orderDate"), worksheet.workbook.properties.date1904);
+    const customer = (await db.prepare("SELECT id, name FROM customers WHERE name = ? COLLATE NOCASE AND deleted_at IS NULL").get(rawCustomer)) as { id: number; name: string } | undefined;
+    const product = (await db.prepare("SELECT id, class_name AS className, grade FROM products WHERE class_name = ? COLLATE NOCASE AND grade = ? COLLATE NOCASE").get(rawClass, rawGrade)) as { id: number; className: string; grade: string } | undefined;
     const quantity = parseExcelNumber(valueOf(row, mapping, "quantity"));
     const price = parseExcelNumber(valueOf(row, mapping, "price"));
-    if (!orderDate) rowErrors.push("下单日期无效");
+    if (!orderDate) rowErrors.push("下单日期格式无法识别或日期不存在，请检查年月日");
+    if (!rawCustomer) rowErrors.push("客户名称为必填项，请填写后重新上传");
+    if (!rawClass) rowErrors.push("产品大类不能为空");
+    if (!rawGrade) rowErrors.push("产品型号不能为空");
     if (!customer && rawCustomer) {
       rowErrors.push(`客户“${rawCustomer}”不存在`);
       missingCustomers.set(rawCustomer.toLowerCase(), rawCustomer);
@@ -196,12 +196,13 @@ function parseOrderRows(worksheet: ExcelJS.Worksheet, mapping: Record<string, nu
       missingProducts.set(`${rawClass.toLowerCase()}||${rawGrade.toLowerCase()}`, { className: rawClass, grade: rawGrade });
     }
     if (quantity === null || quantity <= 0) rowErrors.push("数量必须大于 0");
-    if (price === null || price < 0) rowErrors.push("单价不能小于 0");
+    const rawPrice = valueOf(row, mapping, "price");
+    if (rawPrice !== null && rawPrice !== undefined && String(rawPrice).trim() !== "" && (price === null || price < 0)) rowErrors.push("单价必须为不小于 0 的数字，或留空");
     // 可选日期列：留空或「N/A」这类占位符按空值处理；填了别的但解析不出来才算格式错误
     const optionalDate = (field: string, label: string) => {
       const raw = valueOf(row, mapping, field);
       if (isBlankToken(raw)) return null;
-      const parsed = parseExcelDate(raw);
+      const parsed = parseExcelDate(raw, worksheet.workbook.properties.date1904);
       if (!parsed) rowErrors.push(`${label}格式无效`);
       return parsed;
     };
@@ -209,14 +210,14 @@ function parseOrderRows(worksheet: ExcelJS.Worksheet, mapping: Record<string, nu
     const actualShipmentDate = optionalDate("actualShipmentDate", "实际出货日期");
     const expectedArrivalDate = optionalDate("expectedArrivalDate", "预计到港日期");
     const shipmentMonthRaw = valueOf(row, mapping, "shipmentMonth");
-    const shipmentMonth = isBlankToken(shipmentMonthRaw) ? null : parseShipmentMonth(shipmentMonthRaw, orderDate);
+    const shipmentMonth = isBlankToken(shipmentMonthRaw) ? null : parseShipmentMonth(shipmentMonthRaw, orderDate, worksheet.workbook.properties.date1904);
     if (!isBlankToken(shipmentMonthRaw) && !shipmentMonth) rowErrors.push("出货月份格式无效");
     const { status, invalid: invalidStatus } = parseStatus(valueOf(row, mapping, "status"));
     if (invalidStatus) rowErrors.push(`状态“${invalidStatus}”无效（可用：待确认 / 待出货 / 已出货 / 已到港 / 已取消）`);
     const suppliedOrderNo = String(valueOf(row, mapping, "orderNo") ?? "").trim();
     // 与界面建单同一口径：不区分大小写；编号已存在则更新那条订单（已软删的编号视为已释放，重新建单）
     const existing = suppliedOrderNo
-      ? (db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND deleted_at IS NULL").get(suppliedOrderNo) as { id: number } | undefined)
+      ? ((await db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND deleted_at IS NULL").get(suppliedOrderNo)) as { id: number } | undefined)
       : undefined;
     // 编号重复不再当错误拦下来：预检表格里标红 + 勾选框交给用户决定导哪几行
     if (suppliedOrderNo) seenOrderNos.add(suppliedOrderNo.toLowerCase());
@@ -262,7 +263,7 @@ function parseOrderRows(worksheet: ExcelJS.Worksheet, mapping: Record<string, nu
       grade: product!.grade,
       application: optionalText(valueOf(row, mapping, "application")),
       quantity: quantity!,
-      price: price!,
+      price,
       currency: parseCurrency(valueOf(row, mapping, "currency")),
       orderNature: optionalText(valueOf(row, mapping, "orderNature")),
       productionBase: optionalText(valueOf(row, mapping, "productionBase")),
@@ -326,7 +327,7 @@ function buildPreviewPayload(parsed: ParsedOrders) {
  * 几个人），按单数排序取前两位；超过两个人的，逐单是谁跟的看订单自己那一列。
  * 只在客户跟进人 1 为空时才填（两个位置一起填），系统里手工改过的整个跳过。
  */
-function fillCustomerPic(db: Database.Database, validRows: ImportedOrder[]) {
+async function fillCustomerPic(db: Database, validRows: ImportedOrder[]) {
   const tally = new Map<number, Map<string, number>>();
   for (const row of validRows) {
     if (!row.pic) continue;
@@ -339,12 +340,12 @@ function fillCustomerPic(db: Database.Database, validRows: ImportedOrder[]) {
   );
   for (const [customerId, counts] of tally) {
     const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name.slice(0, 60));
-    if (ranked.length) update.run(ranked[0], ranked[1] ?? "", customerId);
+    if (ranked.length) await update.run(ranked[0], ranked[1] ?? "", customerId);
   }
 }
 
 /** 写订单本体，不自己开事务——调用方决定要不要跟「新建缺失客户/产品」合并成一个事务 */
-function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: SessionUser) {
+async function insertOrders(db: Database, validRows: ImportedOrder[], admin: SessionUser) {
   // 实际落库时的新建/更新条数：同一个编号勾了多行时只会建一条，报数按真实发生的算
   let createCount = 0;
   let updateCount = 0;
@@ -383,7 +384,7 @@ function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: 
   `);
   const classNames = [...new Set(validRows.map((row) => row.className).filter(Boolean))];
   for (const [index, className] of classNames.entries()) {
-    insertClassDict.run(className, className, className, className, 100 + index);
+    await insertClassDict.run(className, className, className, className, 100 + index);
   }
 
   // 用途写在订单行上，实际是牌号的属性：产品还没填用途时补上，已经填了的不覆盖
@@ -391,29 +392,29 @@ function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: 
   const fillApplication = db.prepare(
     "UPDATE products SET application = ?, updated_at = datetime('now') WHERE id = ? AND application = ''",
   );
-  fillCustomerPic(db, validRows);
+  await fillCustomerPic(db, validRows);
   for (const row of validRows) {
-    if (row.application) fillApplication.run(row.application.slice(0, 500), row.productId);
+    if (row.application) await fillApplication.run(row.application.slice(0, 500), row.productId);
     // 同一个订单编号勾了多行时，第一行建单、后面几行更新同一条（不然会撞 order_no 的唯一约束）。
     // 所以这里按写库当下的状态重新判定新建还是更新，而不是沿用预检时算好的 mode
     const existingId = row.orderNo
-      ? (db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND deleted_at IS NULL").get(row.orderNo) as { id: number } | undefined)?.id ?? null
+      ? ((await db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND deleted_at IS NULL").get(row.orderNo)) as { id: number } | undefined)?.id ?? null
       : null;
     if (existingId === null) {
       createCount += 1;
-      const owner = db.prepare("SELECT owner_id AS ownerId FROM customers WHERE id = ?").get(row.customerId) as { ownerId: number };
-      const result = insert.run(row.orderNo ?? sequentialPlaceholder(), row.orderDate, row.customerId, row.productId, row.quantity,
+      const owner = (await db.prepare("SELECT owner_id AS ownerId FROM customers WHERE id = ?").get(row.customerId)) as { ownerId: number };
+      const result = (await insert.run(row.orderNo ?? sequentialPlaceholder(), row.orderDate, row.customerId, row.productId, row.quantity,
         row.price, row.currency ?? "USD", row.orderNature ?? "", row.productionBase ?? "", row.pic ?? "",
         row.destination ?? "", row.tradeTerms ?? "", row.paymentMethod ?? "",
         row.shipmentMonth, row.lcTtDate, row.actualShipmentDate, row.expectedArrivalDate,
         row.contractNo ?? "", row.invoiceNo ?? "", row.status ?? (row.actualShipmentDate ? "shipped" : "planned"),
-        owner.ownerId, row.notes ?? "", admin.id);
+        owner.ownerId, row.notes ?? "", admin.id));
       // 留空的编号在插入时只塞了占位值，这里拿到真正的自增 id 后回填成编号本身
-      finalizeSequentialCode(db, "orders", "order_no", Number(result.lastInsertRowid), row.orderNo);
+      await finalizeSequentialCode(db, "orders", "order_no", Number(result.lastInsertRowid), row.orderNo);
       continue;
     }
     updateCount += 1;
-    // 更新：必填列（日期 / 客户 / 产品 / 数量 / 单价）总是覆盖，负责人保持不动
+    // 更新基础字段；单价留空会清空原价格，负责人保持不动。
     const assignments = ["order_date = ?", "customer_id = ?", "product_id = ?", "quantity = ?", "price = ?"];
     const params: unknown[] = [row.orderDate, row.customerId, row.productId, row.quantity, row.price];
     for (const [field, column] of optionalColumns) {
@@ -423,40 +424,40 @@ function insertOrders(db: Database.Database, validRows: ImportedOrder[], admin: 
       params.push(value);
     }
     assignments.push("updated_at = datetime('now')");
-    db.prepare(`UPDATE orders SET ${assignments.join(", ")} WHERE id = ?`).run(...params, existingId);
+    await db.prepare(`UPDATE orders SET ${assignments.join(", ")} WHERE id = ?`).run(...params, existingId);
   }
   return { createCount, updateCount };
 }
 
-function commitOrders(db: Database.Database, validRows: ImportedOrder[], admin: SessionUser) {
+async function commitOrders(db: Database, validRows: ImportedOrder[], admin: SessionUser) {
   let result = { createCount: 0, updateCount: 0 };
-  db.transaction(() => {
-    result = insertOrders(db, validRows, admin);
+  await db.transaction(async () => {
+    result = (await insertOrders(db, validRows, admin));
   })();
   return result;
 }
 
 /** 新建时的兜底与客户名单导入同一口径：负责人落到执行导入的管理员，状态默认潜在客户 */
-function createMissingCustomers(db: Database.Database, names: string[], adminId: number) {
+async function createMissingCustomers(db: Database, names: string[], adminId: number) {
   const insert = db.prepare("INSERT INTO customers (name, owner_id, status, created_by) VALUES (?, ?, 'potential', ?)");
   for (const raw of names) {
     const name = raw.trim().slice(0, 160);
     if (!name) continue;
-    const existing = db.prepare("SELECT id FROM customers WHERE name = ? COLLATE NOCASE AND deleted_at IS NULL").get(name);
+    const existing = (await db.prepare("SELECT id FROM customers WHERE name = ? COLLATE NOCASE AND deleted_at IS NULL").get(name));
     if (existing) continue;
-    insert.run(name, adminId, adminId);
+    await insert.run(name, adminId, adminId);
   }
 }
 
-function createMissingProducts(db: Database.Database, refs: ProductRef[]) {
+async function createMissingProducts(db: Database, refs: ProductRef[]) {
   const insert = db.prepare("INSERT INTO products (class_name, grade, status) VALUES (?, ?, 'active')");
   for (const ref of refs) {
     const className = String(ref.className ?? "").trim().slice(0, 80);
     const grade = String(ref.grade ?? "").trim().slice(0, 120);
     if (!className || !grade) continue;
-    const existing = db.prepare("SELECT id FROM products WHERE class_name = ? COLLATE NOCASE AND grade = ? COLLATE NOCASE").get(className, grade);
+    const existing = (await db.prepare("SELECT id FROM products WHERE class_name = ? COLLATE NOCASE AND grade = ? COLLATE NOCASE").get(className, grade));
     if (existing) continue;
-    insert.run(className, grade);
+    await insert.run(className, grade);
   }
 }
 
@@ -476,13 +477,51 @@ function isProductRef(value: unknown): value is ProductRef {
 
 /** 预检表格里勾选的行号（Excel 行号）；没传返回 null 表示「全导」 */
 function parseSelectedRows(value: FormDataEntryValue | null): Set<number> | null {
-  const parsed = parseJsonArray(value);
-  if (!parsed.length) return null;
-  return new Set(parsed.filter((item): item is number => typeof item === "number"));
+  if (value === null) return null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(String(value)); } catch { throw new ApiError(422, "INVALID_SELECTION", "勾选行信息无效，请重新预检"); }
+  if (!Array.isArray(parsed) || !parsed.every((item) => Number.isInteger(item) && item > 0)) throw new ApiError(422, "INVALID_SELECTION", "勾选行信息无效，请重新预检");
+  return new Set(parsed as number[]);
 }
 
 function pickSelected(rows: ImportedOrder[], selected: Set<number> | null) {
   return selected ? rows.filter((row) => selected.has(row.rowNumber)) : rows;
+}
+
+/**
+ * 「列对应」弹窗回传的映射：{ 字段: 列号 }，列号从 1 开始，0 / 越界表示这个字段不取任何列。
+ * 同一列被指给两个字段时，后一个不生效——一列只喂一个字段，免得数据被复制到两处。
+ */
+function parseMappingForm(value: FormDataEntryValue | null, columnCount: number): Record<string, number> {
+  if (typeof value !== "string" || !value.trim()) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const result: Record<string, number> = {};
+  const usedColumns = new Set<number>();
+  for (const [field, raw] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!(field in headerAliases)) continue;
+    const column = Number(raw);
+    if (!Number.isInteger(column) || column < 0 || column > columnCount) continue;
+    if (column > 0 && usedColumns.has(column)) continue;
+    if (column > 0) usedColumns.add(column);
+    result[field] = column;
+  }
+  return result;
+}
+
+/** 表头行往下取几行真实数据当样例，帮用户判断某一列到底是什么 */
+function sampleRowsAfter(worksheet: ExcelJS.Worksheet, headerRowNumber: number, columnCount: number, limit = 3) {
+  const samples: string[][] = [];
+  for (let rowNumber = headerRowNumber + 1; rowNumber <= worksheet.rowCount && samples.length < limit; rowNumber += 1) {
+    const cells = readRowTexts(worksheet, rowNumber).slice(0, columnCount);
+    if (cells.some((cell) => cell !== "")) samples.push(cells);
+  }
+  return samples;
 }
 
 /** 「新建缺失项后重新解析仍有错」时用来跳出事务并触发回滚，不落库任何东西 */
@@ -498,61 +537,89 @@ export async function POST(request: Request) {
     if (file.size > 5 * 1024 * 1024) throw new ApiError(413, "FILE_TOO_LARGE", "导入文件不能超过 5MB");
     if (!IMPORT_FILE_PATTERN.test(file.name)) throw new ApiError(422, "INVALID_FILE_TYPE", "仅支持 .xlsx 或 .csv 文件");
 
-    const worksheet = await readUploadWorksheet(file);
+    let worksheet: ExcelJS.Worksheet | undefined;
+    try {
+      worksheet = await readUploadWorksheet(file);
+    } catch {
+      throw new ApiError(422, "INVALID_FILE_CONTENT", "文件无法读取，可能已损坏或实际格式不符。请用 Excel 重新另存为 .xlsx 或 .csv 后上传");
+    }
     if (!worksheet || worksheet.rowCount < 2) throw new ApiError(422, "EMPTY_SHEET", "文件中没有可导入的数据");
 
-    const headerRow = worksheet.getRow(1);
-    const mapping: Record<string, number> = {};
-    headerRow.eachCell((cell, column) => {
-      const normalized = normalizeHeader(cell.value);
-      for (const [field, aliases] of Object.entries(headerAliases)) {
-        if (aliases.includes(normalized)) mapping[field] = column;
-      }
-    });
-    const required = ["orderDate", "customerName", "className", "grade", "quantity", "price"];
-    const missing = required.filter((field) => !mapping[field]);
-    if (missing.length) throw new ApiError(422, "MISSING_COLUMNS", `缺少必要列：${missing.join(", ")}`);
+    // 表头行：用户在「列对应」弹窗里指定过就听他的，否则前 10 行里自动找
+    const suppliedHeaderRow = Number(form.get("headerRow")) || 0;
+    const headerRowNumber = Number.isInteger(suppliedHeaderRow) && suppliedHeaderRow > 0 && suppliedHeaderRow <= worksheet.rowCount
+      ? suppliedHeaderRow
+      : detectHeaderRow(worksheet).row;
+    const headerTexts = readRowTexts(worksheet, headerRowNumber);
+    const auto = buildHeaderMapping(headerTexts);
+    // 手动指定的列覆盖自动识别的结果（0 表示这一列不导入）
+    const manual = parseMappingForm(form.get("mapping"), headerTexts.length);
+    const mapping: Record<string, number> = { ...auto.mapping, ...manual };
+    for (const [field, column] of Object.entries(mapping)) if (!column) delete mapping[field];
+
+    const missing = REQUIRED_ORDER_FIELDS.filter((field) => !mapping[field]);
+    // 必要列没认全，或用户主动要求重新对应：不报错，把文件的列摊给前端让用户自己指
+    if (missing.length || form.get("remap") === "true") {
+      return ok({
+        needsMapping: true,
+        headerRow: headerRowNumber,
+        headers: headerTexts,
+        // 表头行往下几行样例，让用户凭内容判断这一列是什么
+        samples: sampleRowsAfter(worksheet, headerRowNumber, headerTexts.length),
+        // 前 10 行原样，供用户在弹窗里改「表头在第几行」
+        sheetHead: Array.from({ length: Math.min(10, worksheet.rowCount) }, (_, index) => ({
+          row: index + 1,
+          cells: readRowTexts(worksheet, index + 1),
+        })),
+        mapping,
+        fields: Object.keys(headerAliases),
+        requiredFields: [...REQUIRED_ORDER_FIELDS],
+        missingFields: missing,
+      });
+    }
 
     const db = getDb();
-    const parsed = parseOrderRows(worksheet, mapping, db);
+    const selectedRows = commit ? parseSelectedRows(form.get("selectedRows")) : null;
+    if (selectedRows && !selectedRows.size) throw new ApiError(422, "NO_SELECTED_ROWS", "请至少选择一行有效数据导入");
+    const parsed = (await parseOrderRows(worksheet, mapping, db, headerRowNumber, selectedRows));
+    if (!parsed.validRows.length && !parsed.errors.length) throw new ApiError(422, "EMPTY_SELECTION", "没有可导入的数据，请检查文件内容或重新勾选行");
 
     if (!commit) {
       return ok(buildPreviewPayload(parsed));
     }
 
     // 用户在预检表格里勾掉的行不导入；不传这个字段时默认全导（兼容旧调用）
-    const selectedRows = parseSelectedRows(form.get("selectedRows"));
 
     if (parsed.errors.length === 0) {
       const rowsToImport = pickSelected(parsed.validRows, selectedRows);
-      const { createCount, updateCount } = commitOrders(db, rowsToImport, admin);
-      writeAudit(admin.id, "import", "order", null, `从 ${file.name} 导入订单：新增 ${createCount} 条，更新 ${updateCount} 条`);
+      const { createCount, updateCount } = (await commitOrders(db, rowsToImport, admin));
+      await writeAudit(admin.id, "import", "order", null, `从 ${file.name} 导入订单：新增 ${createCount} 条，更新 ${updateCount} 条`);
       return ok({ valid: true, imported: rowsToImport.length, createCount, updateCount, errors: [] });
     }
 
     // 预检发现的错误是「客户/产品不存在」，且前端已经带着用户确认要新建的名单回来：
     // 新建客户/产品、重新解析、写订单，全部放在同一个事务里；重新解析后还有错，
     // 或写订单本身失败（如编号撞车），都整体回滚，不留下孤儿客户/产品
-    const createCustomers = parseJsonArray(form.get("createCustomers")).filter((value): value is string => typeof value === "string");
-    const createProducts = parseJsonArray(form.get("createProducts")).filter(isProductRef);
+    const createCustomers = parseJsonArray(form.get("createCustomers")).filter((value): value is string => typeof value === "string" && parsed.missingCustomers.includes(value));
+    const createProducts = parseJsonArray(form.get("createProducts")).filter(isProductRef).filter((value) => parsed.missingProducts.some((missing) => missing.className === value.className && missing.grade === value.grade));
     if (createCustomers.length || createProducts.length) {
       let retry: ParsedOrders | null = null;
       let committed: { createCount: number; updateCount: number } | null = null;
       try {
         // db.transaction(fn) 把 fn 的返回值原样透出，借这个把 insertOrders 的结果带出事务
-        committed = db.transaction(() => {
-          createMissingCustomers(db, createCustomers, admin.id);
-          createMissingProducts(db, createProducts);
-          retry = parseOrderRows(worksheet, mapping, db);
+        committed = (await db.transaction(async () => {
+          await createMissingCustomers(db, createCustomers, admin.id);
+          await createMissingProducts(db, createProducts);
+          retry = (await parseOrderRows(worksheet, mapping, db, headerRowNumber, selectedRows));
           if (retry.errors.length) throw new StillInvalidError();
-          return insertOrders(db, pickSelected(retry.validRows, selectedRows), admin);
-        })();
+          return (await insertOrders(db, pickSelected(retry.validRows, selectedRows), admin));
+        })());
       } catch (error) {
         if (!(error instanceof StillInvalidError)) throw error;
       }
       if (committed && retry) {
         const finalRows = pickSelected((retry as ParsedOrders).validRows, selectedRows);
-        writeAudit(
+        await writeAudit(
           admin.id,
           "import",
           "order",

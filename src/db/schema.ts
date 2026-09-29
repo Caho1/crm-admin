@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS customer_members (
 );
 
 -- 一个客户可以挂多个联系人（实际业务里十几二十位都有），顺序按 sort_order。
--- 名片正反面以 BLOB 直接存库，随客户档案一起备份，不额外依赖文件目录。
+-- SQLite 桌面模式保留 BLOB；PostgreSQL 服务端使用 MinIO key。
 CREATE TABLE IF NOT EXISTS contacts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
@@ -80,8 +80,10 @@ CREATE TABLE IF NOT EXISTS contacts (
   personality TEXT NOT NULL DEFAULT '',
   card_front_mime TEXT NOT NULL DEFAULT '',
   card_front_data BLOB,
+  card_front_key TEXT,
   card_back_mime TEXT NOT NULL DEFAULT '',
   card_back_data BLOB,
+  card_back_key TEXT,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -126,6 +128,7 @@ CREATE TABLE IF NOT EXISTS visits (
   status TEXT NOT NULL CHECK (status IN ('draft', 'completed', 'archived')) DEFAULT 'draft',
   attachment_name TEXT NOT NULL DEFAULT '',
   attachment_data BLOB,
+  attachment_key TEXT,
   created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -165,7 +168,7 @@ CREATE TABLE IF NOT EXISTS orders (
   customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
   product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
   quantity REAL NOT NULL CHECK (quantity > 0),
-  price REAL NOT NULL CHECK (price >= 0),
+  price REAL CHECK (price >= 0),
   currency TEXT NOT NULL DEFAULT 'USD',
   order_nature TEXT NOT NULL DEFAULT '',
   production_base TEXT NOT NULL DEFAULT '',
@@ -189,13 +192,14 @@ CREATE TABLE IF NOT EXISTS orders (
   deleted_at TEXT
 );
 
--- 型号附件（RAPIDS / TDS / COA 等），只做上传/下载，不做内容预览，随产品一起以 BLOB 存库
+-- 型号附件元数据；服务端文件存 MinIO，桌面模式文件存 BLOB。
 CREATE TABLE IF NOT EXISTS product_attachments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   file_name TEXT NOT NULL,
   mime_type TEXT NOT NULL DEFAULT '',
-  file_data BLOB NOT NULL,
+  file_data BLOB,
+  file_key TEXT,
   file_size INTEGER NOT NULL DEFAULT 0,
   uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -229,6 +233,10 @@ CREATE INDEX IF NOT EXISTS idx_dict_items_type ON dict_items(type, status, sort_
 // 已存在的库不会重跑 CREATE TABLE，新增列必须走 ALTER TABLE。
 // 每次开库时检查一遍，缺什么补什么（幂等，重复启动无副作用）。
 export const columnMigrations: Array<{ table: string; column: string; ddl: string }> = [
+  { table: "contacts", column: "card_front_key", ddl: "ALTER TABLE contacts ADD COLUMN card_front_key TEXT" },
+  { table: "contacts", column: "card_back_key", ddl: "ALTER TABLE contacts ADD COLUMN card_back_key TEXT" },
+  { table: "visits", column: "attachment_key", ddl: "ALTER TABLE visits ADD COLUMN attachment_key TEXT" },
+  { table: "product_attachments", column: "file_key", ddl: "ALTER TABLE product_attachments ADD COLUMN file_key TEXT" },
   { table: "customers", column: "name_en", ddl: "ALTER TABLE customers ADD COLUMN name_en TEXT NOT NULL DEFAULT ''" },
   { table: "customers", column: "short_name", ddl: "ALTER TABLE customers ADD COLUMN short_name TEXT NOT NULL DEFAULT ''" },
   { table: "customers", column: "category", ddl: "ALTER TABLE customers ADD COLUMN category TEXT NOT NULL DEFAULT ''" },

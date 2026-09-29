@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       );
     }
     await createSession(result.user.id);
-    writeAudit(result.user.id, "login", "session", null, `${result.user.name} 登录系统`);
+    await writeAudit(result.user.id, "login", "session", null, `${result.user.name} 登录系统`);
     return ok(result.user);
   } catch (error) {
     return handleApiError(error);

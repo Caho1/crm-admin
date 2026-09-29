@@ -81,8 +81,8 @@ export async function GET(request: Request) {
           params: [productId, productId, productId],
         }
       : { sql: "", params: [] as number[] };
-    const total = (db.prepare(`SELECT COUNT(*) AS count FROM customers c ${where}`).get(...params) as { count: number }).count;
-    const rows = db
+    const total = ((await db.prepare(`SELECT COUNT(*) AS count FROM customers c ${where}`).get(...params)) as { count: number }).count;
+    const rows = (await db
       .prepare(`
         SELECT c.id, c.name, c.name_en AS nameEn, c.short_name AS shortName, c.category, c.country, c.region,
           c.industry, c.address, c.description,
@@ -101,7 +101,7 @@ export async function GET(request: Request) {
         ORDER BY ${productId ? "productOrderCount DESC, productLastOrderDate DESC, " : ""}c.updated_at DESC, c.id DESC
         LIMIT ? OFFSET ?
       `)
-      .all(...edit.params, ...productStats.params, ...params, pageSize, offset);
+      .all(...edit.params, ...productStats.params, ...params, pageSize, offset));
     return ok(rows, { page, pageSize, total });
   } catch (error) {
     return handleApiError(error);
@@ -113,31 +113,31 @@ export async function POST(request: Request) {
     const user = await requireApiUser();
     const input = await parseBody(request, customerSchema);
     const db = getDb();
-    const duplicate = db
+    const duplicate = (await db
       .prepare("SELECT id FROM customers WHERE name = ? COLLATE NOCASE AND deleted_at IS NULL")
-      .get(input.name);
+      .get(input.name));
     if (duplicate) throw new ApiError(409, "DUPLICATE_CUSTOMER", "已存在同名客户，请先检查客户列表");
     const ownerId = user.role === "admin" && input.ownerId ? input.ownerId : user.id;
 
-    const result = db.transaction(() => {
-      const inserted = db.prepare(`
+    const result = (await db.transaction(async () => {
+      const inserted = (await db.prepare(`
         INSERT INTO customers
           (name, name_en, short_name, category, country, region, industry, pic, pic2, address, description, owner_id, status, created_by)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(input.name, input.nameEn, input.shortName, input.category, input.country, input.region, input.industry, input.pic, input.pic2, input.address, input.description, ownerId, input.status, user.id);
+      `).run(input.name, input.nameEn, input.shortName, input.category, input.country, input.region, input.industry, input.pic, input.pic2, input.address, input.description, ownerId, input.status, user.id));
       const customerId = Number(inserted.lastInsertRowid);
       const memberInsert = db.prepare(`
         INSERT OR IGNORE INTO customer_members (customer_id, user_id, access) VALUES (?, ?, 'view')
       `);
       if (user.role === "admin") {
         for (const memberId of input.memberIds) {
-          if (memberId !== ownerId) memberInsert.run(customerId, memberId);
+          if (memberId !== ownerId) await memberInsert.run(customerId, memberId);
         }
       }
-      saveContacts(db, customerId, input.contacts);
+      await saveContacts(db, customerId, input.contacts);
       return customerId;
-    })();
-    writeAudit(user.id, "create", "customer", result, `新建客户 ${input.name}`);
+    })());
+    await writeAudit(user.id, "create", "customer", result, `新建客户 ${input.name}`);
     return created({ id: result });
   } catch (error) {
     return handleApiError(error);

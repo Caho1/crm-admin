@@ -170,3 +170,37 @@
   color: #98a2b3;
   font-size: 12px;
 }
+
+/* ---- 列对应弹窗 ---- */
+.mappingAlert {
+  margin-bottom: 12px;
+}
+
+.mappingHeaderRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.mappingHeaderLabel {
+  flex: 0 0 auto;
+  color: #475467;
+  font-size: 13px;
+}
+
+.mappingHeaderSelect {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mappingField {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #344054;
+}
+
+.mappingSelect {
+  width: 100%;
+}

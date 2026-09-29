@@ -133,7 +133,7 @@ export const orderSchema = z.object({
   customerId: positiveId,
   productId: positiveId,
   quantity: z.coerce.number().positive("数量必须大于 0"),
-  price: z.coerce.number().nonnegative("单价不能小于 0"),
+  price: z.preprocess((value) => value === undefined || value === null || (typeof value === "string" && !value.trim()) ? null : value, z.coerce.number().nonnegative("单价不能小于 0").nullable()),
   currency: z.string().trim().min(3).max(8).default("USD"),
   orderNature: optionalText(60),
   productionBase: optionalText(60),

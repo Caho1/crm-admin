@@ -86,16 +86,25 @@ a {
   max-width: calc(100vw - 24px) !important;
 }
 
-/* 表单弹窗常常比可视区高，滚动条必须一眼看得见：
-   客户在 Windows 上看不到滚动条，以为下面的「添加联系人」根本没渲染出来。
-   配合 body 上的 overflow-y: scroll（常驻轨道），这里把它画得明显一点 */
+/* 表单弹窗的滚动条需要常驻，避免系统自动隐藏后看不出还有内容。
+   新版 Chromium 也支持标准 scrollbar-*：非 auto 值会覆盖下面的
+   WebKit 伪元素样式，因此两套规则必须互斥。 */
 .ant-modal .ant-modal-body {
-  scrollbar-width: thin;
-  scrollbar-color: #c1c8d4 #eff1f5;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+
+/* Firefox 等不支持 WebKit 伪元素的浏览器使用标准属性。 */
+@supports not selector(::-webkit-scrollbar) {
+  .ant-modal .ant-modal-body {
+    scrollbar-color: #8894a7 #eff1f5;
+  }
 }
 
 .ant-modal .ant-modal-body::-webkit-scrollbar {
-  width: 10px;
+  width: 12px;
+  height: 12px;
 }
 
 .ant-modal .ant-modal-body::-webkit-scrollbar-track {
@@ -104,12 +113,14 @@ a {
 }
 
 .ant-modal .ant-modal-body::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border: 2px solid #eff1f5;
   border-radius: 6px;
-  background: #c1c8d4;
+  background: #8894a7;
 }
 
 .ant-modal .ant-modal-body::-webkit-scrollbar-thumb:hover {
-  background: #a9b2c1;
+  background: #667085;
 }
 
 .ant-modal .ant-modal-content,

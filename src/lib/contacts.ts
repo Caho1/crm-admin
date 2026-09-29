@@ -1,4 +1,5 @@
-import type { Database } from "better-sqlite3";
+import { storeFile } from "@/lib/storage";
+import type { Database } from "@/db/client";
 import { ApiError } from "@/lib/api";
 import type { ContactInput } from "@/lib/validation";
 
@@ -7,9 +8,9 @@ export type CardSide = "front" | "back";
 // 名片是手机拍的照片，前端已压到 1600px / JPEG，留 4MB 上限兜底，避免 BLOB 撑爆 SQLite
 const MAX_CARD_BYTES = 4 * 1024 * 1024;
 
-export const CARD_COLUMNS: Record<CardSide, { mime: string; data: string }> = {
-  front: { mime: "card_front_mime", data: "card_front_data" },
-  back: { mime: "card_back_mime", data: "card_back_data" },
+export const CARD_COLUMNS: Record<CardSide, { mime: string; data: string; key: string }> = {
+  front: { mime: "card_front_mime", data: "card_front_data", key: "card_front_key" },
+  back: { mime: "card_back_mime", data: "card_back_data", key: "card_back_key" },
 };
 
 type CardChange = "keep" | "clear" | { mime: string; data: Buffer };
@@ -27,14 +28,15 @@ function parseCard(value: string | null | undefined): CardChange {
   return { mime: match[1] === "image/jpg" ? "image/jpeg" : match[1], data };
 }
 
-function applyCard(db: Database, contactId: number, side: CardSide, change: CardChange) {
+async function applyCard(db: Database, contactId: number, side: CardSide, change: CardChange) {
   if (change === "keep") return;
   const columns = CARD_COLUMNS[side];
   if (change === "clear") {
-    db.prepare(`UPDATE contacts SET ${columns.mime} = '', ${columns.data} = NULL WHERE id = ?`).run(contactId);
+    await db.prepare(`UPDATE contacts SET ${columns.mime} = '', ${columns.data} = NULL, ${columns.key} = NULL WHERE id = ?`).run(contactId);
     return;
   }
-  db.prepare(`UPDATE contacts SET ${columns.mime} = ?, ${columns.data} = ? WHERE id = ?`).run(change.mime, change.data, contactId);
+  const file = await storeFile(change.data);
+  await db.prepare(`UPDATE contacts SET ${columns.mime} = ?, ${columns.data} = ?, ${columns.key} = ? WHERE id = ?`).run(change.mime, file.data, file.key, contactId);
 }
 
 /**
@@ -42,28 +44,30 @@ function applyCard(db: Database, contactId: number, side: CardSide, change: Card
  * 库里有但这次没提交的删除；顺序按数组下标存进 sort_order。
  * 名片走三态（保持 / 删除 / 覆盖），编辑时不重传图片也不会丢原图。
  */
-export function saveContacts(db: Database, customerId: number, contacts: ContactInput[]) {
-  const existing = db.prepare("SELECT id FROM contacts WHERE customer_id = ?").all(customerId) as Array<{ id: number }>;
+export async function saveContacts(db: Database, customerId: number, contacts: ContactInput[]) {
+  const existing = (await db.prepare("SELECT id FROM contacts WHERE customer_id = ?").all(customerId)) as Array<{ id: number }>;
   const existingIds = new Set(existing.map((row) => row.id));
   const keptIds = new Set<number>();
 
-  contacts.forEach((contact, index) => {
+  for (const [index, contact] of contacts.entries()) {
     const front = parseCard(contact.cardFront);
     const back = parseCard(contact.cardBack);
     if (contact.id && existingIds.has(contact.id)) {
-      db.prepare(`
+      await db.prepare(`
         UPDATE contacts SET name = ?, name_en = ?, title = ?, phone = ?, email = ?, personality = ?, sort_order = ?
         WHERE id = ? AND customer_id = ?
       `).run(contact.name, contact.nameEn, contact.title, contact.phone, contact.email, contact.personality, index, contact.id, customerId);
-      applyCard(db, contact.id, "front", front);
-      applyCard(db, contact.id, "back", back);
+      await applyCard(db, contact.id, "front", front);
+      await applyCard(db, contact.id, "back", back);
       keptIds.add(contact.id);
-      return;
+      continue;
     }
-    const inserted = db.prepare(`
+    const frontFile = typeof front === "object" ? await storeFile(front.data) : { data: null, key: null };
+    const backFile = typeof back === "object" ? await storeFile(back.data) : { data: null, key: null };
+    const inserted = (await db.prepare(`
       INSERT INTO contacts (customer_id, name, name_en, title, phone, email, personality, sort_order,
-        card_front_mime, card_front_data, card_back_mime, card_back_data)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        card_front_mime, card_front_data, card_back_mime, card_back_data, card_front_key, card_back_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       customerId,
       contact.name,
@@ -74,23 +78,24 @@ export function saveContacts(db: Database, customerId: number, contacts: Contact
       contact.personality,
       index,
       typeof front === "object" ? front.mime : "",
-      typeof front === "object" ? front.data : null,
+      frontFile.data,
       typeof back === "object" ? back.mime : "",
-      typeof back === "object" ? back.data : null,
-    );
+      backFile.data,
+      frontFile.key, backFile.key,
+    ));
     keptIds.add(Number(inserted.lastInsertRowid));
-  });
+  }
 
   const remove = db.prepare("DELETE FROM contacts WHERE id = ?");
-  for (const row of existing) if (!keptIds.has(row.id)) remove.run(row.id);
+  for (const row of existing) if (!keptIds.has(row.id)) await remove.run(row.id);
 }
 
 /** 详情接口用：名片只返回「有没有」，图片本身走 /api/customers/[id]/contacts/[contactId]/card */
-export function listContacts(db: Database, customerId: number) {
-  return db.prepare(`
+export async function listContacts(db: Database, customerId: number) {
+  return (await db.prepare(`
     SELECT id, name, name_en AS nameEn, title, phone, email, personality,
-      card_front_data IS NOT NULL AS hasCardFront,
-      card_back_data IS NOT NULL AS hasCardBack
+      (card_front_data IS NOT NULL OR card_front_key IS NOT NULL) AS hasCardFront,
+      (card_back_data IS NOT NULL OR card_back_key IS NOT NULL) AS hasCardBack
     FROM contacts WHERE customer_id = ? ORDER BY sort_order, id
-  `).all(customerId);
+  `).all(customerId));
 }

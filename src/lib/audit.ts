@@ -1,13 +1,13 @@
 import { getDb } from "@/db/client";
 
-export function writeAudit(
+export async function writeAudit(
   userId: number | null,
   action: string,
   entityType: string,
   entityId: number | null,
   summary: string,
 ) {
-  getDb()
+  await getDb()
     .prepare(`
       INSERT INTO audit_logs (user_id, action, entity_type, entity_id, summary)
       VALUES (?, ?, ?, ?, ?)

@@ -28,13 +28,13 @@ function secureCookie() {
 
 export async function verifyCredentials(username: string, password: string) {
   const db = getDb();
-  const user = db
+  const user = (await db
     .prepare(`
       SELECT id, username, name, password_hash AS passwordHash, role, status
       FROM users
       WHERE username = ? COLLATE NOCASE
     `)
-    .get(username.trim()) as (SessionUser & { passwordHash: string }) | undefined;
+    .get(username.trim())) as (SessionUser & { passwordHash: string }) | undefined;
 
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
     return { ok: false as const, reason: "invalid" as const };
@@ -51,8 +51,8 @@ export async function createSession(userId: number) {
   const db = getDb();
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + sessionDays() * 24 * 60 * 60 * 1000);
-  db.prepare("DELETE FROM sessions WHERE datetime(expires_at) <= datetime('now')").run();
-  db.prepare(
+  await db.prepare("DELETE FROM sessions WHERE datetime(expires_at) <= datetime('now')").run();
+  await db.prepare(
     "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
   ).run(hashToken(token), userId, expiresAt.toISOString());
 
@@ -70,7 +70,7 @@ export async function destroySession() {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (token) {
-    getDb().prepare("DELETE FROM sessions WHERE token_hash = ?").run(hashToken(token));
+    await getDb().prepare("DELETE FROM sessions WHERE token_hash = ?").run(hashToken(token));
   }
   store.set(SESSION_COOKIE, "", {
     httpOnly: true,
@@ -86,7 +86,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
-  const user = getDb()
+  const user = (await getDb()
     .prepare(`
       SELECT u.id, u.username, u.name, u.role, u.status
       FROM sessions s
@@ -95,7 +95,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
         AND datetime(s.expires_at) > datetime('now')
         AND u.status = 'active'
     `)
-    .get(hashToken(token)) as SessionUser | undefined;
+    .get(hashToken(token))) as SessionUser | undefined;
 
   return user || null;
 }
@@ -112,6 +112,6 @@ export async function requirePageAdmin() {
   return user;
 }
 
-export function invalidateUserSessions(userId: number) {
-  getDb().prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
+export async function invalidateUserSessions(userId: number) {
+  await getDb().prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
 }

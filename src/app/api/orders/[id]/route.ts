@@ -10,22 +10,22 @@ export async function PUT(request: Request, context: Context) {
   try {
     const user = await requireApiUser();
     const id = integerId((await context.params).id);
-    assertResourceAccess(user, "orders", id, "edit");
+    await assertResourceAccess(user, "orders", id, "edit");
     const input = await parseBody(request, orderSchema);
-    assertCustomerAccess(user, input.customerId, "edit");
+    await assertCustomerAccess(user, input.customerId, "edit");
     const db = getDb();
-    const current = db.prepare("SELECT order_no AS orderNo, owner_id AS ownerId FROM orders WHERE id = ?").get(id) as { orderNo: string; ownerId: number } | undefined;
+    const current = (await db.prepare("SELECT order_no AS orderNo, owner_id AS ownerId FROM orders WHERE id = ?").get(id)) as { orderNo: string; ownerId: number } | undefined;
     if (!current) throw new ApiError(404, "NOT_FOUND", "订单不存在");
-    if (!db.prepare("SELECT id FROM products WHERE id = ?").get(input.productId)) {
+    if (!(await db.prepare("SELECT id FROM products WHERE id = ?").get(input.productId))) {
       throw new ApiError(422, "PRODUCT_NOT_FOUND", "产品不存在", { productId: "产品不存在" });
     }
     // 极少数历史数据编号是空的才会走到这个兜底：编辑的这条订单本身已有 id，直接拿来当编号
     const orderNo = input.orderNo || current.orderNo || String(id);
-    if (db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND id <> ? AND deleted_at IS NULL").get(orderNo, id)) {
+    if ((await db.prepare("SELECT id FROM orders WHERE order_no = ? COLLATE NOCASE AND id <> ? AND deleted_at IS NULL").get(orderNo, id))) {
       throw new ApiError(409, "DUPLICATE_ORDER_NO", "订单编号已存在");
     }
     const ownerId = user.role === "admin" && input.ownerId ? input.ownerId : current.ownerId;
-    db.prepare(`
+    await db.prepare(`
       UPDATE orders SET order_no = ?, order_date = ?, customer_id = ?, product_id = ?,
         quantity = ?, price = ?, currency = ?, order_nature = ?, production_base = ?, pic = ?,
         destination = ?, trade_terms = ?, payment_method = ?, shipment_month = ?,
@@ -37,7 +37,7 @@ export async function PUT(request: Request, context: Context) {
       input.tradeTerms, input.paymentMethod, input.shipmentMonth, input.lcTtDate,
       input.actualShipmentDate, input.expectedArrivalDate,
       input.contractNo, input.invoiceNo, input.status, ownerId, input.notes, id);
-    writeAudit(user.id, "update", "order", id, `更新订单 ${orderNo}`);
+    await writeAudit(user.id, "update", "order", id, `更新订单 ${orderNo}`);
     return ok({ id, orderNo });
   } catch (error) {
     return handleApiError(error);
@@ -48,16 +48,16 @@ export async function DELETE(_request: Request, context: Context) {
   try {
     const user = await requireApiUser();
     const id = integerId((await context.params).id);
-    assertResourceAccess(user, "orders", id, "edit");
+    await assertResourceAccess(user, "orders", id, "edit");
     const db = getDb();
-    const row = db.prepare("SELECT order_no AS orderNo FROM orders WHERE id = ?").get(id) as { orderNo: string };
+    const row = (await db.prepare("SELECT order_no AS orderNo FROM orders WHERE id = ?").get(id)) as { orderNo: string };
     // 软删除同时释放业务编号（追加 #del-id 后缀），原编号之后可复用（例如 Excel 重新导入）
-    db.prepare(`
+    await db.prepare(`
       UPDATE orders SET deleted_at = datetime('now'), updated_at = datetime('now'),
         order_no = order_no || '#del-' || id
       WHERE id = ?
     `).run(id);
-    writeAudit(user.id, "delete", "order", id, `删除订单 ${row.orderNo}`);
+    await writeAudit(user.id, "delete", "order", id, `删除订单 ${row.orderNo}`);
     return ok({ id });
   } catch (error) {
     return handleApiError(error);

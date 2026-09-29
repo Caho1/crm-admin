@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type Database from "better-sqlite3";
+import type { Database } from "@/db/client";
 import { ApiError } from "./api";
 
 export function addCondition(
@@ -38,10 +38,10 @@ export function generatedCode(prefix: string) {
 }
 
 // 自动生成编号：生成后查重，撞号时重试，避免并发/同毫秒冲突直接报错
-export function uniqueCode(prefix: string, exists: (code: string) => boolean) {
+export async function uniqueCode(prefix: string, exists: (code: string) => boolean | Promise<boolean>) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const code = generatedCode(prefix);
-    if (!exists(code)) return code;
+    if (!(await exists(code))) return code;
   }
   throw new ApiError(500, "CODE_GENERATION_FAILED", "编号生成失败，请重试");
 }
@@ -55,9 +55,9 @@ export function sequentialPlaceholder() {
   return `__pending__${crypto.randomUUID()}`;
 }
 
-export function finalizeSequentialCode(db: Database.Database, table: string, column: string, id: number, supplied: string | null) {
+export async function finalizeSequentialCode(db: Database, table: string, column: string, id: number, supplied: string | null) {
   if (supplied) return supplied;
   const code = String(id);
-  db.prepare(`UPDATE ${table} SET ${column} = ? WHERE id = ?`).run(code, id);
+  await db.prepare(`UPDATE ${table} SET ${column} = ? WHERE id = ?`).run(code, id);
   return code;
 }

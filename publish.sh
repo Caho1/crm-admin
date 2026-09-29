@@ -19,7 +19,8 @@ if [[ ! -d "$APP/repository.git" ]]; then git clone --mirror "$REPOSITORY" "$APP
 git --git-dir="$APP/repository.git" fetch --prune origin '+refs/heads/main:refs/heads/main'
 REVISION=$(git --git-dir="$APP/repository.git" rev-parse refs/heads/main)
 RELEASE="$APP/releases/$(date -u +%Y%m%dT%H%M%SZ)-${REVISION:0:12}"
-PREVIOUS=$(readlink -f "$APP/current" 2>/dev/null || true)
+PREVIOUS=""
+if [[ -f "$APP/current/server.js" ]]; then PREVIOUS=$(readlink -f "$APP/current"); fi
 SWITCHED=0
 cleanup() {
   status=$?
@@ -62,7 +63,7 @@ chown -R crm:crm "$RELEASE"
 pm2 delete crm-stage >/dev/null 2>&1 || true
 CRM_STAGE_RELEASE="$RELEASE" pm2 start deploy/stage.config.cjs
 for attempt in $(seq 1 45); do
-  if curl -fsS --max-time 5 http://127.0.0.1:3004/api/health >/dev/null; then break; fi
+  if curl -fsS --max-time 5 http://127.0.0.1:3004/api/health >/dev/null 2>&1; then break; fi
   sleep 2
 done
 curl -fsS --max-time 10 http://127.0.0.1:3004/api/health >/dev/null
@@ -72,7 +73,7 @@ mv -Tf "$APP/current.next" "$APP/current"
 SWITCHED=1
 pm2 startOrRestart "$RELEASE/deploy/ecosystem.config.cjs" --only crm-web --update-env
 for attempt in $(seq 1 30); do
-  if curl -fsS --max-time 5 http://127.0.0.1:3003/api/health >/dev/null; then break; fi
+  if curl -fsS --max-time 5 http://127.0.0.1:3003/api/health >/dev/null 2>&1; then break; fi
   sleep 2
 done
 curl -fsS --max-time 10 http://127.0.0.1:3003/api/health >/dev/null

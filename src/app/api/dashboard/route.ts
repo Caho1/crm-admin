@@ -1,6 +1,7 @@
 import { getDb } from "@/db/client";
 import { handleApiError, ok, requireApiUser } from "@/lib/api";
 import { customerScope } from "@/lib/permissions";
+import { activeOrderConditions } from "@/lib/order-filters";
 
 export async function GET() {
   try {
@@ -17,7 +18,7 @@ export async function GET() {
       const row = (await db.prepare(`
         SELECT COUNT(*) AS count, COALESCE(SUM(ord.quantity), 0) AS quantity
         FROM orders ord JOIN customers c ON c.id = ord.customer_id
-        WHERE ord.deleted_at IS NULL AND ord.status <> 'cancelled' AND ord.currency = ?
+        WHERE ${activeOrderConditions.join(" AND ")} AND ord.status <> 'cancelled' AND ord.currency = ?
           AND strftime('%Y-%m', ord.order_date) = strftime('%Y-%m', 'now', '+8 hours')
           AND ${scope.sql}
       `).get(currency, ...scope.params)) as { count: number; quantity: number };
@@ -33,7 +34,7 @@ export async function GET() {
       developingProjects: (await scalar(`
         SELECT COUNT(*) AS count FROM orders ord
         JOIN customers c ON c.id = ord.customer_id
-        WHERE ord.deleted_at IS NULL AND ord.order_nature = '开发'
+        WHERE ${activeOrderConditions.join(" AND ")} AND ord.order_nature = '开发'
           AND ${scope.sql}
       `)),
       usdOrders: (await currencyOrdersThisMonth("USD")),
@@ -62,7 +63,7 @@ export async function GET() {
         FROM orders ord
         JOIN customers c ON c.id = ord.customer_id
         JOIN products p ON p.id = ord.product_id
-        WHERE ord.deleted_at IS NULL AND c.deleted_at IS NULL
+        WHERE ${activeOrderConditions.join(" AND ")}
           AND ord.status NOT IN ('arrived', 'cancelled') AND ${scope.sql}
         ORDER BY COALESCE(ord.expected_arrival_date, '9999-12-31'), ord.order_date DESC
         LIMIT 6

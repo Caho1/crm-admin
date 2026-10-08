@@ -16,7 +16,8 @@
     "electron:pack:dir": "npm run build && electron-rebuild -f -w better-sqlite3 && node scripts/copy-sqlite-build.mjs && electron-builder --dir && rm -rf node_modules/better-sqlite3/build && npm rebuild better-sqlite3 && node -e \"require('better-sqlite3'); console.log('better-sqlite3 ABI OK for dev')\"",
     "electron:pack:win": "node scripts/restore-sqlite-dev.mjs && npm run build && node scripts/fetch-sqlite-prebuild.mjs win32 x64 && node scripts/copy-sqlite-build.mjs && electron-builder --win portable zip --x64 && node scripts/restore-sqlite-dev.mjs",
     "verify:installer": "node scripts/verify-installer.mjs",
-    "test": "tsx --test src/db/*.test.ts src/lib/*.test.ts"
+    "test": "node --import tsx --test src/db/*.test.ts src/lib/*.test.ts",
+    "test:postgres": "node scripts/test-postgres.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
@@ -45,6 +46,7 @@
     "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "happy-dom": "^20.14.5",
     "postcss": "^8.5.17",
     "tsx": "^4.23.0",
     "typescript": "^5"

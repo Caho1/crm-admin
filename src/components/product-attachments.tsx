@@ -53,7 +53,7 @@ function cellText(value: unknown): string {
  * 新建产品时还没有 productId，先提示保存后再上传；编辑已有产品时立即生效，
  * 每次增删都直接调接口，不随主表单一起提交。
  */
-export function AttachmentsField({ label, productId }: { label: string; productId?: number }) {
+export function AttachmentsField({ label, productId, readOnly = false }: { label: string; productId?: number; readOnly?: boolean }) {
   const { t } = useLocale();
   const { message } = App.useApp();
   const [items, setItems] = useState<AttachmentMeta[]>([]);
@@ -86,7 +86,7 @@ export function AttachmentsField({ label, productId }: { label: string; productI
   }, [load]);
 
   const upload = async (file: File) => {
-    if (!productId) return;
+    if (!productId || readOnly) return;
     if (file.size > MAX_SIZE) {
       message.error(t("附件不能超过 10MB"));
       return;
@@ -107,7 +107,7 @@ export function AttachmentsField({ label, productId }: { label: string; productI
   };
 
   const remove = async (id: number) => {
-    if (!productId) return;
+    if (!productId || readOnly) return;
     const response = await apiFetch(`/api/products/${productId}/attachments/${id}`, { method: "DELETE" });
     if (!response.ok) {
       const payload = await response.json();
@@ -185,7 +185,7 @@ export function AttachmentsField({ label, productId }: { label: string; productI
       {/* 上传入口跟着分区标题走，与「联系人」「竞争型号对比」的分区头部按钮同一套位置和交互 */}
       <div className={styles.sectionHead}>
         <span className={styles.sectionTitle}>{label}</span>
-        {productId ? (
+        {productId && !readOnly ? (
           <Upload
             showUploadList={false}
             beforeUpload={(file) => {
@@ -218,7 +218,7 @@ export function AttachmentsField({ label, productId }: { label: string; productI
                 target="_blank"
                 rel="noreferrer"
               />
-              <Button danger type="text" size="small" icon={<DeleteOutlined />} aria-label={t("删除")} onClick={() => void remove(item.id)} />
+              {!readOnly ? <Button danger type="text" size="small" icon={<DeleteOutlined />} aria-label={t("删除")} onClick={() => void remove(item.id)} /> : null}
             </div>
           ))}
         </div>

@@ -10,9 +10,9 @@ import {
   REQUIRED_ORDER_FIELDS,
   buildHeaderMapping,
   cellToText,
+  cellValue,
   detectHeaderRow,
   headerAliases,
-  isErrorValue,
   parseExcelDate,
   parseExcelNumber,
   parseShipmentMonth,
@@ -31,7 +31,7 @@ type ImportedOrder = {
   /** 同一个订单编号在文件里出现了不止一次：不拦截，只在预检表格里标红 */
   duplicate: boolean;
   id: number | null;
-  /** null = 留空，等真正写库时用这条订单自己的自增 id 当编号 */
+  /** null = 留空，写库时从自增 id 开始分配可用的纯数字编号 */
   orderNo: string | null;
   orderDate: string;
   customerId: number;
@@ -87,13 +87,7 @@ type ParsedOrders = {
 function valueOf(row: ExcelJS.Row, mapping: Record<string, number>, field: string) {
   const column = mapping[field];
   if (!column) return null;
-  const value = row.getCell(column).value;
-  if (isErrorValue(value)) return null;
-  if (value && typeof value === "object" && "text" in value) return String(value.text);
-  if (value && typeof value === "object" && "result" in value) {
-    return isErrorValue(value.result) ? null : value.result;
-  }
-  return value;
+  return cellValue(row.getCell(column).value);
 }
 
 // 状态列同时接受英文代码与中文标签；其余非空值视为错误而不是静默回退
@@ -346,6 +340,8 @@ async function fillCustomerPic(db: Database, validRows: ImportedOrder[]) {
 
 /** 写订单本体，不自己开事务——调用方决定要不要跟「新建缺失客户/产品」合并成一个事务 */
 async function insertOrders(db: Database, validRows: ImportedOrder[], admin: SessionUser) {
+  // 空编号不能占用本批后续手填编号，否则后续行会被误判为更新刚创建的订单。
+  const reservedCodes = new Set(validRows.flatMap((row) => row.orderNo ? [row.orderNo] : []));
   // 实际落库时的新建/更新条数：同一个编号勾了多行时只会建一条，报数按真实发生的算
   let createCount = 0;
   let updateCount = 0;
@@ -409,8 +405,8 @@ async function insertOrders(db: Database, validRows: ImportedOrder[], admin: Ses
         row.shipmentMonth, row.lcTtDate, row.actualShipmentDate, row.expectedArrivalDate,
         row.contractNo ?? "", row.invoiceNo ?? "", row.status ?? (row.actualShipmentDate ? "shipped" : "planned"),
         owner.ownerId, row.notes ?? "", admin.id));
-      // 留空的编号在插入时只塞了占位值，这里拿到真正的自增 id 后回填成编号本身
-      await finalizeSequentialCode(db, "orders", "order_no", Number(result.lastInsertRowid), row.orderNo);
+      // 用自增 id 作为编号起点，跳过已有编号及本批手填编号。
+      await finalizeSequentialCode(db, "orders", "order_no", Number(result.lastInsertRowid), row.orderNo, reservedCodes);
       continue;
     }
     updateCount += 1;

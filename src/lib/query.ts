@@ -47,17 +47,31 @@ export async function uniqueCode(prefix: string, exists: (code: string) => boole
 }
 
 /**
- * 订单编号 / 客户编号这类业务编号，留空时直接用数据库自增 id 当编号：纯数字、天然唯一，
- * 不会像「日期 + 随机数」那样在同一批导入里撞号。id 要插入后才知道，所以先塞一个占位值，
- * 插入拿到 id 后再把这一行的编号列改回真正的 id。
+ * 留空编号先插入随机占位值，再从自增 id 开始寻找可用的纯数字编号。
+ * 手填编号可能已经占用 id，因此最终编号不保证等于 id。
  */
 export function sequentialPlaceholder() {
   return `__pending__${crypto.randomUUID()}`;
 }
 
-export async function finalizeSequentialCode(db: Database, table: string, column: string, id: number, supplied: string | null) {
+/** 必须在插入行的同一事务内调用。保存点使 PG 唯一冲突后仍可重试，并保留整批回滚能力。 */
+export async function finalizeSequentialCode(db: Database, table: string, column: string, id: number, supplied: string | null, reservedCodes: ReadonlySet<string> = new Set()) {
   if (supplied) return supplied;
-  const code = String(id);
-  await db.prepare(`UPDATE ${table} SET ${column} = ? WHERE id = ?`).run(code, id);
-  return code;
+  for (let candidate = id; Number.isSafeInteger(candidate) && candidate > 0; candidate += 1) {
+    const code = String(candidate);
+    if (reservedCodes.has(code)) continue;
+    await db.prepare("SAVEPOINT sequential_code").run();
+    try {
+      const result = await db.prepare(`UPDATE ${table} SET ${column} = ? WHERE id = ?`).run(code, id);
+      if (result.changes !== 1) throw new Error("编号对应的记录不存在");
+      await db.prepare("RELEASE SAVEPOINT sequential_code").run();
+      return code;
+    } catch (error) {
+      await db.prepare("ROLLBACK TO SAVEPOINT sequential_code").run();
+      await db.prepare("RELEASE SAVEPOINT sequential_code").run();
+      const constraintCode = (error as { code?: string }).code;
+      if (constraintCode !== "23505" && constraintCode !== "SQLITE_CONSTRAINT_UNIQUE") throw error;
+    }
+  }
+  throw new ApiError(500, "CODE_GENERATION_FAILED", "编号生成失败，请重试");
 }

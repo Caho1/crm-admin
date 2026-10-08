@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       throw new ApiError(409, "DUPLICATE_ORDER_NO", "订单编号已存在");
     }
     const ownerId = user.role === "admin" && input.ownerId ? input.ownerId : user.id;
-    // 留空的订单编号直接用这条订单的自增 id 当编号：先占位插入，拿到 id 后再回填
+    // 留空编号先占位插入，再从自增 id 开始分配可用的纯数字编号。
     const { id, orderNo } = (await db.transaction(async () => {
       const result = (await db.prepare(`
         INSERT INTO orders

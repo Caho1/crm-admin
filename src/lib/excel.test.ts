@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseExcelDate, parseExcelNumber, parseShipmentMonth, readUploadWorksheet } from "./excel";
+import { cellToText, cellValue, parseExcelDate, parseExcelNumber, parseShipmentMonth, readUploadWorksheet } from "./excel";
 import { orderSchema } from "./validation";
 
 test("date formats and Excel serials normalize without rolling invalid dates forward", () => {
@@ -33,4 +33,20 @@ test("CSV reader preserves identifiers, blanks and dates for strict validation",
   assert.equal(sheet!.getRow(2).getCell(2).value, "2026-02-31");
   assert.equal(parseExcelNumber(sheet!.getRow(2).getCell(3).value), null);
   await assert.rejects(readUploadWorksheet(new File(["broken workbook"], "broken.xlsx")));
+});
+
+test("preview and import share rich text, hyperlink, formula and typed value parsing", () => {
+  const formatted = { richText: [{ text: " Synthetic", font: { bold: true } }, { text: " Customer " }] };
+  assert.equal(cellValue(formatted), " Synthetic Customer ");
+  assert.equal(cellToText(formatted), "Synthetic Customer");
+  assert.equal(cellValue({ text: "Synthetic Grade", hyperlink: "https://example.invalid/" }), "Synthetic Grade");
+  assert.equal(cellValue({ formula: "1+1", result: 2 }), 2);
+  assert.equal(cellValue({ formula: "NA()", result: { error: "#N/A" } }), null);
+  const date = new Date("2026-10-01T00:00:00Z");
+  assert.equal(cellValue({ formula: "TODAY()", result: date }), date);
+  assert.equal(cellToText({ formula: "TODAY()", result: date }), "2026-10-01");
+  for (const value of [null, undefined, "", 0, 12.5, true, "plain text"]) {
+    assert.equal(cellValue(value), value);
+    assert.equal(cellToText(value), String(value ?? ""));
+  }
 });

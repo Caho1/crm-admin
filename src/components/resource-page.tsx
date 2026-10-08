@@ -12,6 +12,7 @@ import {
 import {
   App,
   Button,
+  Descriptions,
   Empty,
   Form,
   Input,
@@ -45,6 +46,7 @@ import {
 import { useLocale } from "./providers";
 import { useCurrentUser } from "./user-context";
 import { StatusTag } from "./status-tag";
+import { AttachmentsField } from "./product-attachments";
 import styles from "./resource-page.module.css";
 
 export type ResourceKind = "customers" | "products";
@@ -220,6 +222,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
   };
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<RowData | null>(null);
+  const [viewingProduct, setViewingProduct] = useState<RowData | null>(null);
   const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
   const createHandled = useRef(false);
   const loadSeq = useRef(0);
@@ -278,10 +281,11 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
   }, [searchInput, query]);
 
   const openCreate = useCallback(() => {
+    if (config.adminWriteOnly && user.role !== "admin") return;
     setEditing(null);
     setInitialValues(config.defaults(user.id));
     setModalOpen(true);
-  }, [config, user.id]);
+  }, [config, user.id, user.role]);
 
   useEffect(() => {
     if (!createHandled.current && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("create") === "1") {
@@ -302,6 +306,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
   };
 
   const openEdit = async (record: RowData) => {
+    if (!canWrite) return;
     let values: RowData = record;
     if (resource === "customers") {
       try {
@@ -325,6 +330,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
   };
 
   const submit = async () => {
+    if (!canWrite) return;
     try {
       const values = await form.validateFields();
       const payload = { ...values };
@@ -407,15 +413,13 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
           return location || <span className={styles.muted}>-</span>;
         }
         if (column.kind === "primary") {
-          const onClick = resource === "customers"
-            ? () => viewCustomer(record)
-            : canWrite && record.canEdit !== 0
-              ? () => void openEdit(record)
-              : undefined;
+          if (resource === "customers") {
+            return <span className={styles.primaryCell} onClick={() => viewCustomer(record)}>{String(value || "-")}</span>;
+          }
           return (
-            <span className={onClick ? styles.primaryCell : styles.primaryCellStatic} onClick={onClick}>
+            <Button type="link" className={styles.primaryCell} onClick={() => setViewingProduct(record)}>
               {String(value || "-")}
-            </span>
+            </Button>
           );
         }
         if (column.kind === "status") {
@@ -472,7 +476,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
         },
       });
     }
-    if (canWrite || resource === "customers") {
+    if (canWrite || resource === "customers" || resource === "products") {
       columns.push({
         title: t("操作"),
         key: "actions",
@@ -482,6 +486,8 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
           <div className={styles.rowActions}>
             {resource === "customers" ? (
               <Tooltip title={t("查看客户 360")}><Button type="text" size="small" icon={<EyeOutlined />} aria-label={t("查看")} onClick={() => viewCustomer(record)} /></Tooltip>
+            ) : resource === "products" ? (
+              <Tooltip title={t("查看")}><Button type="text" size="small" icon={<EyeOutlined />} aria-label={t("查看")} onClick={() => setViewingProduct(record)} /></Tooltip>
             ) : null}
             {canWrite && record.canEdit !== 0 ? (
               <Tooltip title={t("编辑")}><Button type="text" size="small" icon={<EditOutlined />} aria-label={t("编辑")} onClick={() => void openEdit(record)} /></Tooltip>
@@ -637,6 +643,31 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
           />
         </div>
       ) : null}
+      <Modal
+        title={t("产品详情")}
+        open={Boolean(viewingProduct)}
+        centered
+        width={860}
+        footer={null}
+        onCancel={() => setViewingProduct(null)}
+        destroyOnHidden
+      >
+        {viewingProduct ? (
+          <>
+            <Descriptions column={2} items={[
+              { key: "className", label: t("产品大类"), children: dictLabelOf(lookups.dicts?.product_class, String(viewingProduct.className || ""), locale) },
+              { key: "grade", label: t("型号 / 牌号（Grade）"), children: String(viewingProduct.grade || "-") },
+              { key: "brand", label: t("品牌"), children: String(viewingProduct.brand || "-") },
+              { key: "supplier", label: t("供应商"), children: String(viewingProduct.supplier || "-") },
+              { key: "status", label: t("产品状态"), span: 2, children: <StatusTag value={String(viewingProduct.status || "")} /> },
+              { key: "application", label: t("产品用途"), children: String(viewingProduct.application || "-"), span: 2 },
+              { key: "notes", label: t("备注"), children: String(viewingProduct.notes || "-"), span: 2 },
+              { key: "competitors", label: t("竞争型号对比"), span: 2, children: (viewingProduct.competitors as Array<{ id: number; grade: string; manufacturer: string }> | undefined)?.map((item) => <Tag key={item.id}>{item.grade}{item.manufacturer ? `（${item.manufacturer}）` : ""}</Tag>) },
+            ]} />
+            <AttachmentsField label={t("附件")} productId={viewingProduct.id} readOnly />
+          </>
+        ) : null}
+      </Modal>
       <Modal
         title={editing ? config.editLabel : config.createLabel}
         open={modalOpen}

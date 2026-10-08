@@ -135,19 +135,24 @@ export function isErrorValue(value: unknown) {
   return Boolean(value && typeof value === "object" && "error" in value);
 }
 
-/** Excel 单元格值 → 纯文本：富文本、公式结果、日期都要能正确取到，不能落成 [object Object] */
-export function cellToText(value: ExcelJS.CellValue): string {
-  if (value === null || value === undefined) return "";
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  if (isErrorValue(value)) return "";
+/** 预览和导入共用；保留日期/数字类型供日期、金额解析，文本对象只取可见文字。 */
+export function cellValue(value: ExcelJS.CellValue): string | number | boolean | Date | null | undefined {
+  if (value === null || value === undefined || value instanceof Date) return value;
+  if (isErrorValue(value)) return null;
   if (typeof value === "object" && "richText" in value) {
-    return (value.richText as Array<{ text: string }>).map((part) => part.text).join("").trim();
+    return value.richText.map((part) => part.text).join("");
   }
-  if (typeof value === "object" && "text" in value) return String(value.text).trim();
+  if (typeof value === "object" && "text" in value) return String(value.text);
   if (typeof value === "object" && "result" in value) {
-    return isErrorValue(value.result) ? "" : String(value.result ?? "").trim();
+    return cellValue(value.result);
   }
-  return String(value).trim();
+  return typeof value === "object" ? null : value;
+}
+
+/** Excel 单元格值 → 纯文本：与实际导入使用相同的对象解包规则。 */
+export function cellToText(value: ExcelJS.CellValue): string {
+  const parsed = cellValue(value);
+  return parsed instanceof Date ? parsed.toISOString().slice(0, 10) : String(parsed ?? "").trim();
 }
 
 /** 整行读成文本，长度按工作表列数对齐，空单元格留空串 */

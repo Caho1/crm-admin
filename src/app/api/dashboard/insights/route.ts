@@ -1,6 +1,7 @@
 import { getDb } from "@/db/client";
 import { handleApiError, ok, requireApiUser } from "@/lib/api";
 import { customerScope } from "@/lib/permissions";
+import { activeOrderConditions } from "@/lib/order-filters";
 
 /**
  * 工作台的结构性看板数据（不随趋势粒度变化，单独取）：
@@ -32,7 +33,7 @@ export async function GET() {
         FROM orders ord
         JOIN customers c ON c.id = ord.customer_id
         JOIN products p ON p.id = ord.product_id
-        WHERE ord.deleted_at IS NULL AND ord.status <> 'cancelled' AND ${scope.sql}
+        WHERE ${activeOrderConditions.join(" AND ")} AND ord.status <> 'cancelled' AND ${scope.sql}
         GROUP BY p.id
         ORDER BY amount DESC
         LIMIT 8

@@ -3,8 +3,10 @@ import { addCondition, searchLike } from "./query";
 import type { SessionUser } from "./types";
 
 // 订单列表与订单导出共用同一套筛选口径，避免「导出结果 ≠ 当前筛选」
+export const activeOrderConditions = ["ord.deleted_at IS NULL", "c.deleted_at IS NULL"];
+
 export function buildOrderFilters(searchParams: URLSearchParams, user: SessionUser) {
-  const conditions = ["ord.deleted_at IS NULL", "c.deleted_at IS NULL"];
+  const conditions = [...activeOrderConditions];
   const params: unknown[] = [];
   const scope = customerScope(user, "c");
   addCondition(conditions, params, scope.sql, ...scope.params);

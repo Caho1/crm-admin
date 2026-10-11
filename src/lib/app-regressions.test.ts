@@ -265,3 +265,34 @@ test("ordinary users may list/download product attachments but cannot upload, de
   assert.equal((await invoke((request) => DELETE(request, attachmentContext), "/api/products/1/attachments/1", 3, { method: "DELETE" })).status, 403);
   assert.equal((await invoke((request) => PUT(request, context), "/api/products/1", 3, { method: "PUT" })).status, 403);
 });
+
+test("customer materials persist as relations and search without orders, with access and rollback protection", async () => {
+  const { POST, GET: search } = await import("../app/api/customers/route");
+  const { GET, PUT } = await import("../app/api/customers/[id]/route");
+  await db.prepare("INSERT INTO product_competitors (product_id, grade, manufacturer) VALUES (1, 'CJS700', 'Synthetic Maker')").run();
+  const body = { name: "Material Customer", materials: [{ productId: 1, competitorIds: [1] }], materialModels: "A，B\nC", contacts: [] };
+  const write = (value: unknown) => ({ method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
+  const created = await invoke(POST, "/api/customers", 1, { ...write(body), method: "POST" });
+  assert.equal(created.status, 201);
+  const id = (await created.json()).data.id;
+  const path = `/api/customers/${id}`;
+  const context = { params: Promise.resolve({ id: String(id) }) };
+  const read = async () => (await (await invoke((r) => GET(r, context), path)).json()).data;
+  assert.equal((await read()).customer.materialModels, "A, B, C");
+  assert.equal((await read()).materialProducts[0].competitors[0].manufacturer, "Synthetic Maker");
+  for (const query of ["Synthetic Grade", "cjs700", "Synthetic Maker"]) {
+    const found = await (await invoke(search, `/api/customers?q=${encodeURIComponent(query)}`)).json();
+    assert.ok(found.data.some((row: { id: number; orderCount: number }) => row.id === id && Number(row.orderCount) === 0));
+  }
+  assert.equal((await (await invoke(search, "/api/customers?q=cjs700", 5)).json()).meta.total, 0);
+  const bad = await invoke((r) => PUT(r, context), path, 1, write({ ...body, name: "Must Roll Back", materials: [{ productId: 1, competitorIds: [999] }] }));
+  assert.equal(bad.status, 422);
+  assert.equal((await read()).customer.name, body.name);
+  assert.equal((await invoke((r) => PUT(r, context), path, 1, write({ name: body.name, contacts: [] }))).status, 200);
+  assert.equal((await read()).materialProducts.length, 1);
+  const { saveCompetitors } = await import("./products");
+  await assert.rejects(db.transaction(() => saveCompetitors(db, 1, []))(), /已关联客户/);
+  assert.equal((await read()).materialProducts[0].competitors.length, 1);
+  await invoke((r) => PUT(r, context), path, 1, write({ ...body, materials: [] }));
+  assert.deepEqual((await read()).materialProducts, []);
+});

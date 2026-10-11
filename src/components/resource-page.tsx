@@ -30,6 +30,8 @@ import dayjs, { type Dayjs } from "dayjs";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TranslateVars } from "@/lib/i18n";
+import { showFormValidationError, setServerFormErrors } from "@/lib/form-errors";
+import { formatMaterialModels } from "@/lib/material-models";
 import { apiFetch } from "@/lib/client-fetch";
 import { dictLabel, dictLabelOf, type DictType } from "@/lib/dicts";
 import {
@@ -100,7 +102,7 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       endpoint: "/api/customers",
       createLabel: t("新建客户"),
       editLabel: t("编辑客户"),
-      searchPlaceholder: t("名称、简称、跟进人、负责人、联系人、地址、分类、行业"),
+      searchPlaceholder: t("材料型号、名称、简称、跟进人、负责人、联系人、地址、分类、行业"),
       filterKey: "status",
       filterPlaceholder: t("客户状态"),
       filterOptions: customerStatuses,
@@ -108,10 +110,11 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
         { key: "category", dictType: "customer_category", placeholder: t("全部分类") },
         { key: "industry", source: "industries", placeholder: t("全部行业") },
         // 按型号找客户：口径是「买过这个型号」（有未删除的订单），选中后列表会多出该型号的订单笔数
-        { key: "productId", source: "products", placeholder: t("按型号找客户"), wide: true },
+        { key: "productId", source: "products", placeholder: t("按已购型号筛选"), wide: true },
       ],
       columns: [
         { title: t("客户名称"), dataIndex: "name", width: 200, kind: "primary", ellipsis: true },
+        { title: t("使用材料型号"), dataIndex: "materialModels", width: 200, ellipsis: true },
         { title: t("客户编号"), dataIndex: "id", width: 100, kind: "number" },
         { title: t("简称"), dataIndex: "shortName", width: 110, ellipsis: true },
         { title: t("英文名称"), dataIndex: "nameEn", width: 190, ellipsis: true },
@@ -129,7 +132,7 @@ function buildConfigs(t: TFn): Record<ResourceKind, Config> {
       ],
       // 字段配置与客户详情页的编辑弹窗共用，见 customer-form.tsx
       fields: buildCustomerFields(t),
-      defaults: (userId) => ({ status: "potential", ownerId: userId, memberIds: [], contacts: [] }),
+      defaults: (userId) => ({ status: "potential", ownerId: userId, memberIds: [], contacts: [], materials: [] }),
     },
     products: {
       endpoint: "/api/products",
@@ -348,7 +351,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
       const result = await response.json();
       if (!response.ok) {
         if (result.error?.fields) {
-          form.setFields(Object.entries(result.error.fields).map(([name, errors]) => ({ name, errors: [t(String(errors))] })));
+          setServerFormErrors(form, result.error.fields, t);
         }
         throw new Error(result.error?.message || "保存失败");
       }
@@ -356,7 +359,8 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
       setModalOpen(false);
       await Promise.all([loadRows(), loadLookups()]);
     } catch (error) {
-      if (error instanceof Error && error.message) message.error(t(error.message));
+      if (showFormValidationError(form, error)) message.error(t("请检查红色提示的必填项或输入格式"));
+      else if (error instanceof Error && error.message) message.error(t(error.message));
     } finally {
       setSaving(false);
     }
@@ -404,6 +408,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
       // 首列为主键列时固定在左侧，横向滚动时不丢失行上下文
       fixed: index === 0 && column.kind === "primary" ? ("left" as const) : undefined,
       render: (value: unknown, record: RowData) => {
+        if (column.dataIndex === "materialModels") return formatMaterialModels([record.linkedMaterialModels, value].filter(Boolean).join(", ")) || "-";
         if (column.kind === "pic") {
           const text = picText(record);
           return text || <span className={styles.muted}>-</span>;
@@ -582,6 +587,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
                     : null}
                 </div>
                 <dl className={styles.cardMeta}>
+                  <div><dt>{t("使用材料型号")}</dt><dd className={styles.preWrap}>{formatMaterialModels([record.linkedMaterialModels, record.materialModels].filter(Boolean).join(", ")) || "-"}</dd></div>
                   <div><dt>{t("客户编号")}</dt><dd>{record.id as number}</dd></div>
                   <div><dt>{t("国家 / 地区")}</dt><dd>{location || "-"}</dd></div>
                   <div><dt>{t("跟进人")}</dt><dd>{picText(record) || "-"}</dd></div>
@@ -684,7 +690,7 @@ export function ResourcePage({ resource }: { resource: ResourceKind }) {
         {/* destroyOnHidden 保证每次打开重新挂载，initialValues 在首帧即生效，避免先空后填的闪烁。
             这里不能用 preserve={false}：它会把 Form.List（客户联系人）里的初始值清掉，
             连续编辑多条记录时的残留值改由打开时的 resetFields 处理 */}
-        <Form form={form} layout="vertical" requiredMark={false} initialValues={initialValues}>
+        <Form form={form} layout="vertical" requiredMark={true} initialValues={initialValues}>
           <FormValuesReset values={initialValues} />
           <ResourceFormFields fields={config.fields} lookups={lookups} editing={Boolean(editing)} recordId={editing?.id} />
         </Form>

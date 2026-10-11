@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS customers (
   -- 一个客户可能由两个人一起跟（大客户按产品线分），所以留两个位置
   pic TEXT NOT NULL DEFAULT '',
   pic2 TEXT NOT NULL DEFAULT '',
+  material_models TEXT NOT NULL DEFAULT '',
   address TEXT NOT NULL DEFAULT '',
   description TEXT NOT NULL DEFAULT '',
   owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
@@ -112,6 +113,25 @@ CREATE TABLE IF NOT EXISTS product_competitors (
   notes TEXT NOT NULL DEFAULT '',
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_competitor_product_pair ON product_competitors(id, product_id);
+
+CREATE TABLE IF NOT EXISTS customer_products (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+  UNIQUE(customer_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS customer_competitors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL,
+  product_id INTEGER NOT NULL,
+  competitor_id INTEGER NOT NULL,
+  UNIQUE(customer_id, competitor_id),
+  FOREIGN KEY (customer_id, product_id) REFERENCES customer_products(customer_id, product_id) ON DELETE CASCADE,
+  FOREIGN KEY (competitor_id, product_id) REFERENCES product_competitors(id, product_id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS visits (
@@ -253,6 +273,7 @@ export const columnMigrations: Array<{ table: string; column: string; ddl: strin
   { table: "orders", column: "production_base", ddl: "ALTER TABLE orders ADD COLUMN production_base TEXT NOT NULL DEFAULT ''" },
   { table: "orders", column: "pic", ddl: "ALTER TABLE orders ADD COLUMN pic TEXT NOT NULL DEFAULT ''" },
   { table: "customers", column: "pic", ddl: "ALTER TABLE customers ADD COLUMN pic TEXT NOT NULL DEFAULT ''" },
+  { table: "customers", column: "material_models", ddl: "ALTER TABLE customers ADD COLUMN material_models TEXT NOT NULL DEFAULT ''" },
   { table: "customers", column: "pic2", ddl: "ALTER TABLE customers ADD COLUMN pic2 TEXT NOT NULL DEFAULT ''" },
 ];
 

@@ -8,5 +8,6 @@ export async function migratePostgres(db: Pool | PoolClient) {
     .replace(/\bREAL\b/g, "DOUBLE PRECISION")
     .replace(/datetime\('now'\)/g, "to_char(timezone('UTC', now()), 'YYYY-MM-DD HH24:MI:SS')");
   await db.query(schema + postMigrationSql);
+  await db.query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS material_models TEXT NOT NULL DEFAULT ''");
   await db.query("CREATE UNIQUE INDEX IF NOT EXISTS users_username_casefold ON users (lower(username))");
 }

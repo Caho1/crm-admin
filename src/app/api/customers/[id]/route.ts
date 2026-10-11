@@ -1,3 +1,4 @@
+import { saveCustomerMaterials, listCustomerMaterials } from "@/lib/customer-materials";
 import { getDb } from "@/db/client";
 import { ApiError, handleApiError, integerId, ok, parseBody, requireApiUser } from "@/lib/api";
 import { writeAudit } from "@/lib/audit";
@@ -19,7 +20,7 @@ export async function GET(_request: Request, context: Context) {
     const db = getDb();
     const customer = (await db.prepare(`
       SELECT c.id, c.name, c.name_en AS nameEn, c.short_name AS shortName, c.category, c.country, c.region,
-        c.industry, c.address, c.description,
+        c.industry, c.address, c.description, c.material_models AS materialModels,
         c.owner_id AS ownerId, owner.name AS ownerName, c.pic, c.pic2, c.status,
         c.created_at AS createdAt, c.updated_at AS updatedAt
       FROM customers c JOIN users owner ON owner.id = c.owner_id
@@ -41,7 +42,7 @@ export async function GET(_request: Request, context: Context) {
     // 竞品列表：客户下过单或在谈的我方产品，各自挂着的竞争型号。
     // 竞品维护在产品档案里，这里只按客户实际用到的产品聚合，不额外录入。
     const relatedProducts = (await db.prepare(`
-      SELECT p.id, p.class_name AS className, p.grade,
+      SELECT p.id, p.class_name AS className, p.grade, p.brand,
         (SELECT COUNT(*) FROM orders o WHERE o.product_id = p.id AND o.customer_id = ? AND o.deleted_at IS NULL) AS orderCount
       FROM products p
       WHERE p.id IN (
@@ -52,7 +53,8 @@ export async function GET(_request: Request, context: Context) {
       ORDER BY orderCount DESC, p.class_name, p.grade
     `).all(id, id, id)) as Array<{ id: number; className: string; grade: string; orderCount: number }>;
     const competitorProducts = (await attachCompetitors(db, relatedProducts));
-    return ok({ customer, contacts, members, canEdit, orderStatusCounts, competitorProducts });
+    const materialProducts = await listCustomerMaterials(db, id);
+    return ok({ customer, contacts, members, canEdit, orderStatusCounts, competitorProducts, materialProducts });
   } catch (error) {
     return handleApiError(error);
   }
@@ -74,9 +76,9 @@ export async function PUT(request: Request, context: Context) {
     await db.transaction(async () => {
       await db.prepare(`
         UPDATE customers SET name = ?, name_en = ?, short_name = ?, category = ?, country = ?, region = ?,
-          industry = ?, pic = ?, pic2 = ?, address = ?, description = ?, owner_id = ?, status = ?,
+          industry = ?, pic = ?, pic2 = ?, material_models = COALESCE(?, material_models), address = ?, description = ?, owner_id = ?, status = ?,
           updated_at = datetime('now') WHERE id = ?
-      `).run(input.name, input.nameEn, input.shortName, input.category, input.country, input.region, input.industry, input.pic, input.pic2, input.address, input.description, ownerId, input.status, id);
+      `).run(input.name, input.nameEn, input.shortName, input.category, input.country, input.region, input.industry, input.pic, input.pic2, input.materialModels ?? null, input.address, input.description, ownerId, input.status, id);
       if (user.role === "admin") {
         // 保留已有成员的 access 等级，避免 edit 权限被重置成 view
         const existing = (await db.prepare("SELECT user_id AS userId, access FROM customer_members WHERE customer_id = ?").all(id)) as Array<{ userId: number; access: string }>;
@@ -86,6 +88,7 @@ export async function PUT(request: Request, context: Context) {
         for (const memberId of input.memberIds) if (memberId !== ownerId) await insert.run(id, memberId, accessOf.get(memberId) || "view");
       }
       await saveContacts(db, id, input.contacts);
+      await saveCustomerMaterials(db, id, input.materials);
     })();
     await writeAudit(user.id, "update", "customer", id, `更新客户 ${input.name}`);
     return ok({ id });

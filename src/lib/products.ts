@@ -1,3 +1,4 @@
+import { ApiError } from "./api";
 import type { Database } from "@/db/client";
 import type { ProductCompetitorInput } from "@/lib/validation";
 
@@ -35,7 +36,12 @@ export async function saveCompetitors(db: Database, productId: number, competito
   }
 
   const remove = db.prepare("DELETE FROM product_competitors WHERE id = ?");
-  for (const row of existing) if (!keptIds.has(row.id)) await remove.run(row.id);
+  for (const row of existing) if (!keptIds.has(row.id)) {
+    if (await db.prepare("SELECT id FROM customer_competitors WHERE competitor_id = ? LIMIT 1").get(row.id)) {
+      throw new ApiError(409, "COMPETITOR_IN_USE", "该竞争型号已关联客户，请先解除客户关联再删除");
+    }
+    await remove.run(row.id);
+  }
 }
 
 /**

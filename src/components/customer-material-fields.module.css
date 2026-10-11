@@ -1,0 +1,72 @@
+.section {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 12px 0 28px;
+  padding: 24px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.sectionHeader, .cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sectionHeader h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.hint, .footnote {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.hint { margin: 8px 0 20px; }
+.footnote { margin: 12px 0 0; }
+.cards { display: grid; gap: 16px; }
+
+.card {
+  min-width: 0;
+  padding: 18px 20px 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--page-bg);
+}
+
+.cardHeader {
+  margin-bottom: 16px;
+  font-weight: 600;
+}
+
+.section .card :global(.ant-form-item),
+.section .supplement :global(.ant-form-item) {
+  margin-bottom: 18px;
+}
+
+.section .card :global(.ant-form-item:last-child) { margin-bottom: 0; }
+
+.section :global(.ant-form-item-row) {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.section :global(.ant-form-item-label) {
+  text-align: left;
+  padding-bottom: 8px;
+}
+
+.section :global(.ant-form-item-label > label) { min-height: 0; }
+.section :global(.ant-select) { width: 100%; }
+.section :global(.ant-select-selection-item) { max-width: 100%; }
+.supplement { margin-top: 24px; }
+.empty { padding: 20px; color: var(--text-secondary); background: var(--page-bg); border-radius: 10px; }
+
+@media (max-width: 600px) {
+  .sectionHeader { flex-wrap: wrap; gap: 10px; }
+  .card { padding: 14px; }
+}

@@ -1,3 +1,4 @@
+import { formatMaterialModels } from "./material-models";
 import { z } from "zod";
 import { DICT_TYPE_VALUES } from "./dicts";
 
@@ -66,6 +67,11 @@ export const customerSchema = z.object({
   // 一个客户最多记两个跟进人，再多就该拆客户或者看订单上的逐单跟进人了
   pic: optionalText(60),
   pic2: optionalText(60),
+  materials: z.array(z.object({
+    productId: positiveId,
+    competitorIds: z.array(positiveId).max(100).default([]),
+  })).max(100).optional(),
+  materialModels: z.string().trim().transform(formatMaterialModels).pipe(z.string().max(2000, "不能超过 2000 个字符")).optional(),
   address: optionalText(240),
   description: optionalText(2000),
   ownerId: positiveId.optional(),

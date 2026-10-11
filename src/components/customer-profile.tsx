@@ -1,10 +1,12 @@
 "use client";
 
-import { ArrowLeftOutlined, DeleteOutlined, EditOutlined, MailOutlined, PhoneOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, DeleteOutlined, EditOutlined, EnvironmentOutlined, MailOutlined, PhoneOutlined } from "@ant-design/icons";
 import { App, Button, Empty, Image, Skeleton, Table, Tabs, Tag, type TableProps } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { formatMaterialModels } from "@/lib/material-models";
+import { amapSearchUrl } from "@/lib/map-link";
 import { apiFetch } from "@/lib/client-fetch";
 import { dictLabelOf, type DictMap } from "@/lib/dicts";
 import { CustomerEditModal } from "./customer-form";
@@ -35,6 +37,7 @@ type CompetitorProduct = {
   className: string;
   grade: string;
   orderCount: number;
+  brand?: string;
   competitors: Array<{ id: number; grade: string; manufacturer: string; notes: string }>;
 };
 
@@ -45,6 +48,7 @@ type Detail = {
   canEdit?: boolean;
   orderStatusCounts?: Record<string, number>;
   competitorProducts?: CompetitorProduct[];
+  materialProducts?: CompetitorProduct[];
 };
 
 /** 联系人名片墙：一位联系人一张卡，名片正反面点开可看大图 */
@@ -89,7 +93,7 @@ function ContactList({ contacts, customerId, version }: { contacts: Contact[]; c
  * 竞品列表：按客户下过单 / 在谈的我方产品聚合，列出每个产品对应的竞争型号。
  * 竞品数据在「产品型号」里维护，这里只读展示，避免同一份竞品在客户下重复录入。
  */
-function CompetitorList({ products }: { products: CompetitorProduct[] }) {
+function CompetitorList({ products, actual = false }: { products: CompetitorProduct[]; actual?: boolean }) {
   const { t } = useLocale();
 
   // 拍平成表格行：同一个我方产品的多条竞品用 rowSpan 合并首列，
@@ -97,6 +101,7 @@ function CompetitorList({ products }: { products: CompetitorProduct[] }) {
   type Row = {
     key: string;
     className: string;
+    brand?: string;
     grade: string;
     orderCount: number;
     span: number;
@@ -107,7 +112,7 @@ function CompetitorList({ products }: { products: CompetitorProduct[] }) {
   };
   const rows: Row[] = [];
   for (const product of products) {
-    const base = { className: product.className, grade: product.grade, orderCount: product.orderCount };
+    const base = { brand: product.brand, className: product.className, grade: product.grade, orderCount: product.orderCount };
     if (!product.competitors.length) {
       rows.push({ key: `p${product.id}`, ...base, span: 1, competitorGrade: "", manufacturer: "", notes: "", empty: true });
       continue;
@@ -141,6 +146,7 @@ function CompetitorList({ products }: { products: CompetitorProduct[] }) {
         </div>
       ),
     },
+    { title: t("品牌"), dataIndex: "brand", width: 130, onCell: (row) => ({ rowSpan: row.span }), render: (value) => value || "-" },
     {
       title: t("竞争型号"),
       dataIndex: "competitorGrade",
@@ -149,7 +155,7 @@ function CompetitorList({ products }: { products: CompetitorProduct[] }) {
       onCell: (row) => (row.empty ? { colSpan: 3 } : {}),
       render: (value, row) =>
         row.empty
-          ? <span className={resStyles.muted}>{t("该产品尚未登记竞争型号，可在「产品型号」里补充")}</span>
+          ? <span className={resStyles.muted}>{t(actual ? "该客户未登记使用的竞争型号" : "该产品尚未登记竞争型号，可在「产品型号」里补充")}</span>
           : <span className={resStyles.primaryCellStatic}>{String(value)}</span>,
     },
     {
@@ -170,7 +176,7 @@ function CompetitorList({ products }: { products: CompetitorProduct[] }) {
   return (
     <section className={styles.section}>
       <div className={styles.sectionHead}>
-        <h2 className={styles.sectionTitle}>{t("竞品列表")}</h2>
+        <h2 className={styles.sectionTitle}>{t(actual ? "使用产品与竞争对手" : "产品竞品参考")}</h2>
         <span className={styles.sectionCount}>{t("共 {n} 条", { n: rows.filter((row) => !row.empty).length })}</span>
       </div>
       <div className={styles.tableFrame}>
@@ -331,7 +337,19 @@ export function CustomerProfile({ id }: { id: number }) {
       <div className={styles.facts}>
         <div className={styles.fact}>
           <div className={styles.factLabel}>{t("地址")}</div>
-          <div className={styles.factValue}>{customer.address || "-"}</div>
+          <div className={styles.factValue}>
+            {customer.address || "-"}
+            {amapSearchUrl(customer.address) && (
+              <a className={styles.mapLink} href={amapSearchUrl(customer.address)!}
+                target="_blank" rel="noopener noreferrer" title={t("在高德地图搜索地址，确认地点后导航")}>
+                <EnvironmentOutlined /> {t("高德地图")}
+              </a>
+            )}
+          </div>
+        </div>
+        <div className={styles.fact}>
+          <div className={styles.factLabel}>{t("使用材料型号")}</div>
+          <div className={`${styles.factValue} ${resStyles.preWrap}`}>{formatMaterialModels([...(data.materialProducts || []).map((p) => `${p.className} / ${p.grade}`), customer.materialModels].filter(Boolean).join(", ")) || "-"}</div>
         </div>
         <div className={styles.fact}>
           <div className={styles.factLabel}>{t("客户简介")}</div>
@@ -387,8 +405,13 @@ export function CustomerProfile({ id }: { id: number }) {
             children: <ContactList contacts={data.contacts} customerId={id} version={String(customer.updatedAt || "")} />,
           },
           {
+            key: "materials",
+            label: t("使用产品与竞争对手"),
+            children: <CompetitorList products={data.materialProducts || []} actual />,
+          },
+          {
             key: "competitors",
-            label: `${t("竞品列表")}${competitorCount ? ` (${competitorCount})` : ""}`,
+            label: `${t("产品竞品参考")}${competitorCount ? ` (${competitorCount})` : ""}`,
             children: <CompetitorList products={data.competitorProducts || []} />,
           },
           {

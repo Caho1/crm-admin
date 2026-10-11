@@ -3,8 +3,11 @@
 import { App, DatePicker, Form, Input, InputNumber, Modal, Select, Skeleton } from "antd";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TranslateVars } from "@/lib/i18n";
+import { showFormValidationError, setServerFormErrors } from "@/lib/form-errors";
+import { formatMaterialModels } from "@/lib/material-models";
 import { apiFetch } from "@/lib/client-fetch";
 import { dictLabel, type DictMap, type DictType } from "@/lib/dicts";
+import { CustomerMaterialFields, type MaterialProductOption } from "./customer-material-fields";
 import { CompetitorsField } from "./competitor-fields";
 import { ContactsField, type ContactValue } from "./contact-fields";
 import { AttachmentsField } from "./product-attachments";
@@ -14,10 +17,10 @@ import styles from "./resource-page.module.css";
 
 export type TFn = (text: string, vars?: TranslateVars) => string;
 export type Option = { label: string; value: string | number };
-export type LookupItem = { id: number; name?: string; label?: string; className?: string; grade?: string; role?: string; status?: string };
+export type LookupItem = MaterialProductOption & { id: number; name?: string; label?: string; className?: string; grade?: string; role?: string; status?: string };
 /** industries：客户表里实际录入过的行业（去重），供列表筛选下拉用，不是标签字典 */
 export type Lookups = { customers: LookupItem[]; products: LookupItem[]; users: LookupItem[]; dicts: DictMap; industries: string[] };
-export type FieldType = "input" | "textarea" | "select" | "multi" | "date" | "month" | "number" | "contacts" | "competitors" | "attachments" | "section";
+export type FieldType = "input" | "textarea" | "select" | "multi" | "date" | "month" | "number" | "contacts" | "competitors" | "attachments" | "section" | "materials";
 export type Field = {
   name: string;
   label: string;
@@ -64,6 +67,7 @@ export function ResourceFormFields({ fields, lookups, editing, recordId }: { fie
   const user = useCurrentUser();
 
   const renderField = (field: Field) => {
+    if (field.type === "materials") return <CustomerMaterialFields key={field.name} products={lookups.products} />;
     // 分区标题：把「基本信息」「联系人」这样的大块隔开
     if (field.type === "section") {
       return <div key={field.name} className={`${styles.fieldFull} ${styles.sectionTitle}`}>{field.label}</div>;
@@ -166,6 +170,7 @@ export function buildCustomerFields(t: TFn): Field[] {
     { name: "region", label: t("地区"), type: "input" },
     { name: "memberIds", label: t("协作成员"), type: "multi", source: "users", adminOnly: true },
     { name: "address", label: t("详细地址"), type: "input", full: true, placeholder: t("详细到街道门牌，搜索时可按地址关键词查找") },
+    { name: "materials", label: t("使用产品与竞争对手"), type: "materials", full: true },
     { name: "description", label: t("客户简介"), type: "textarea", rows: 3, full: true, maxLength: 2000 },
     { name: "contacts", label: t("联系人"), type: "contacts", full: true },
   ];
@@ -176,6 +181,7 @@ export function customerFormValues(detail: {
   customer: Record<string, unknown>;
   contacts?: Array<Record<string, unknown>>;
   members?: Array<{ id: number }>;
+  materialProducts?: Array<{ id: number; competitors: Array<{ id: number }> }>;
 }): Record<string, unknown> {
   const customerId = detail.customer?.id;
   // 名片图片不随详情下发，表单只拿到读取地址用于回显；updatedAt 当版本号，换图后不吃旧缓存
@@ -184,6 +190,8 @@ export function customerFormValues(detail: {
     `/api/customers/${customerId}/contacts/${contactId}/card?side=${side}&v=${version}`;
   return {
     ...detail.customer,
+    materials: (detail.materialProducts || []).map((product) => ({ productId: product.id, competitorIds: product.competitors.map((item) => item.id) })),
+    materialModels: formatMaterialModels(detail.customer.materialModels),
     memberIds: (detail.members || []).map((item) => item.id),
     contacts: (detail.contacts || []).map((contact): ContactValue => ({
       id: Number(contact.id),
@@ -267,7 +275,7 @@ export function CustomerEditModal({
       const result = await response.json();
       if (!response.ok) {
         if (result.error?.fields) {
-          form.setFields(Object.entries(result.error.fields).map(([name, errors]) => ({ name, errors: [t(String(errors))] })));
+          setServerFormErrors(form, result.error.fields, t);
         }
         throw new Error(result.error?.message || "保存失败");
       }
@@ -275,7 +283,8 @@ export function CustomerEditModal({
       callbacks.current.onSaved?.();
       callbacks.current.onClose();
     } catch (error) {
-      if (error instanceof Error && error.message) message.error(t(error.message));
+      if (showFormValidationError(form, error)) message.error(t("请检查红色提示的必填项或输入格式"));
+      else if (error instanceof Error && error.message) message.error(t(error.message));
     } finally {
       setSaving(false);
     }
@@ -300,7 +309,7 @@ export function CustomerEditModal({
           这里不能用 preserve={false}：它会把 Form.List（联系人）里的初始值清掉，
           重复打开时的残留值改由下面的 resetFields 处理 */}
       {initialValues ? (
-        <Form form={form} layout="vertical" requiredMark={false} initialValues={initialValues}>
+        <Form form={form} layout="vertical" requiredMark={true} initialValues={initialValues}>
           <FormValuesReset values={initialValues} />
           <ResourceFormFields fields={fields} lookups={lookups} editing />
         </Form>

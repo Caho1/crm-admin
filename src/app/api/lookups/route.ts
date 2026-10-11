@@ -1,3 +1,4 @@
+import { attachCompetitors } from "@/lib/products";
 import { getDb } from "@/db/client";
 import { handleApiError, ok, requireApiUser } from "@/lib/api";
 import { DICT_TYPES, type DictItem, type DictMap } from "@/lib/dicts";
@@ -57,7 +58,7 @@ export async function GET() {
       `)
       .all(...scope.params)) as Array<{ value: string }>).map((row) => row.value);
 
-    return ok({ customers, products, users, dicts, industries });
+    return ok({ customers, products: await attachCompetitors(db, products as Array<{ id: number }>), users, dicts, industries });
   } catch (error) {
     return handleApiError(error);
   }

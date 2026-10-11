@@ -170,8 +170,8 @@ export function buildCustomerFields(t: TFn): Field[] {
     { name: "region", label: t("地区"), type: "input" },
     { name: "memberIds", label: t("协作成员"), type: "multi", source: "users", adminOnly: true },
     { name: "address", label: t("详细地址"), type: "input", full: true, placeholder: t("详细到街道门牌，搜索时可按地址关键词查找") },
-    { name: "materials", label: t("使用产品与竞争对手"), type: "materials", full: true },
     { name: "description", label: t("客户简介"), type: "textarea", rows: 3, full: true, maxLength: 2000 },
+    { name: "materials", label: t("使用产品与竞争对手"), type: "materials", full: true },
     { name: "contacts", label: t("联系人"), type: "contacts", full: true },
   ];
 }

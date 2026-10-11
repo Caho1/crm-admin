@@ -14,10 +14,8 @@
   gap: 16px;
 }
 
-.sectionHeader h3 {
+.sectionHeader .sectionHeading {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
 }
 
 .hint, .footnote {

@@ -4,6 +4,7 @@ import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { Button, Form, Input, Select } from "antd";
 import { useLocale } from "./providers";
 import styles from "./customer-material-fields.module.css";
+import formStyles from "./resource-page.module.css";
 
 export type MaterialProductOption = {
   id: number; className?: string; grade?: string; brand?: string; status?: string;
@@ -38,7 +39,7 @@ export function CustomerMaterialFields({ products }: { products: MaterialProduct
   return <section className={styles.section}>
     <Form.List name="materials">{(fields, { add, remove }) => <>
       <div className={styles.sectionHeader}>
-        <h3>{t("使用产品与竞争对手")}</h3>
+        <h3 className={`${formStyles.sectionTitle} ${styles.sectionHeading}`}>{t("使用产品与竞争对手")}</h3>
         <Button icon={<PlusOutlined />} disabled={fields.length >= 100} onClick={() => add({ competitorIds: [] })}>{t("关联产品")}</Button>
       </div>
       <p className={styles.hint}>{t("选择产品后，关联客户实际使用的竞品牌号。")}</p>
